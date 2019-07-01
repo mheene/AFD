@@ -7,13 +7,15 @@ compiler: gcc
 before_install:
   - sudo apt-get --yes update
   - sudo apt-get --yes install libmotif-common libmotif-dev libxpm-dev libxaw7-dev
-  - sudo apt-get --yes install xfonts-base libssl-dev
+  - sudo apt-get --yes install xfonts-base libssl-dev wget
 
 install:
   - sudo ac-tools/bootstrap
   - sudo ./configure -q --enable-ssl --disable-dependency-tracking
   - sudo make -s -j`nproc` && sudo make -s install
-  - mkdir /tmp/local && afd -a -w /tmp/local
+  - mkdir -p /tmp/local/etc && cd /tmp/local/etc
+  - wget -q https://raw.githubusercontent.com/mheene/docker-afd/master/config/DIR_CONFIG
+  - cd && afd -a -w /tmp/local
 
 
 script: sleep 10 && ps | grep -q afd
