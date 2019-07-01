@@ -6,7 +6,7 @@ compiler: gcc
 
 before_install:
   - sudo apt-get --yes update
-  - sudo apt-get --yes install motif motfi-devel libXpm-devel libXaw-devel
+  - sudo apt-get --yes install libmotif libmotif-dev libXpm-devel libXaw-devel
   - sudo apt-get --yes xorg-x11-fonts-misc openssl-devel
 
 install:
