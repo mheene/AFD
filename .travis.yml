@@ -12,7 +12,7 @@ before_install:
 install:
   - sudo ac-tools/bootstrap
   - sudo ./configure -q --enable-ssl --disable-dependency-tracking
-  - sudo make -s -j`nproc` && make -s install
+  - sudo make -s -j`nproc` && sudo make -s install
   - sudo export AFD_WORK_DIR=/root/local
   - sudo afd -a 
 
