@@ -15,7 +15,8 @@ install:
   - sudo make -s -j`nproc` && sudo make -s install
   - mkdir -p /tmp/local/etc && cd /tmp/local/etc
   - wget -q https://raw.githubusercontent.com/mheene/docker-afd/master/config/DIR_CONFIG
-  - cd && afd -a -w /tmp/local
+  - cd && afd -a -w /tmp/local &
+  - ps
 
 
 script: sleep 10 && ps | grep -q afd
