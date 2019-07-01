@@ -19,4 +19,4 @@ install:
   - ps
 
 
-script: sleep 10 && ps | grep -q afd
+script: ps -efl | grep afd
