@@ -13,7 +13,7 @@ install:
   - sudo ac-tools/bootstrap
   - sudo ./configure -q --enable-ssl --disable-dependency-tracking
   - sudo make -s -j`nproc` && sudo make -s install
-  - mkdir ~/local && AFD_WORK_DIR=~/local afd -a
+  - mkdir /tmp/local && afd -a -w /tmp/local
 
 
 script: sleep 10 && ps | grep -q afd
