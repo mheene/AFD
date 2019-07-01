@@ -1,0 +1,19 @@
+sudo: required
+dist: xenial
+language: c
+
+compiler: gcc
+
+before_install:
+  - sudo apt-get --yes update
+  - sudo apt-get --yes install motif motfi-devel libXpm-devel libXaw-devel
+  - sudo apt-get --yes xorg-x11-fonts-misc openssl-devel
+
+install:
+  - sudo ac-tools/bootstrap
+  - sudo ./configure -q --enable-ssl --disable-dependency-tracking
+  - sudo make -s -j`nproc` && make -s install
+  - sudo export AFD_WORK_DIR=/root/local
+  - sudo afd -a 
+
+script: sleep 10 && ps | grep -q afd
