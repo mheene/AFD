@@ -1046,6 +1046,7 @@ typedef unsigned long       u_long_64;
 #define QUEUED_FILES                     2
 #define OLD_LOCKED_FILES                 4
 #define UNREADABLE_FILES                 8
+#define OLD_RLOCKED_FILES                16
 
 /* Definitions for [options]. */
 #define TIFF2GTS_ID                      "tiff2gts"
@@ -1073,6 +1074,8 @@ typedef unsigned long       u_long_64;
 #define RESTART_FILE_ID_LENGTH           (sizeof(RESTART_FILE_ID) - 1)
 #define TRANS_RENAME_ID                  "trans_rename"
 #define TRANS_RENAME_ID_LENGTH           (sizeof(TRANS_RENAME_ID) - 1)
+#define TRANS_SRENAME_ID                 "trans_srename"
+#define TRANS_SRENAME_ID_LENGTH          (sizeof(TRANS_SRENAME_ID) - 1)
 #ifdef _WITH_WMO_SUPPORT
 # define WITH_SEQUENCE_NUMBER_ID         "sequence numbering"
 # define WITH_SEQUENCE_NUMBER_ID_LENGTH  (sizeof(WITH_SEQUENCE_NUMBER_ID) - 1)
@@ -2838,10 +2841,14 @@ struct fileretrieve_status
                                             /* UNREADABLE_FILES: Un-     */
                                             /* readable files are to be  */
                                             /* deleted.                  */
+                                            /* OLD_RLOCKED_FILES: Old    */
+                                            /* locked files on remote    */
+                                            /* hosts are to be deleted.  */
                                             /*+------+------------------+*/
                                             /*|Bit(s)|     Meaning      |*/
                                             /*+------+------------------+*/
-                                            /*|  5-8 | Not used.        |*/
+                                            /*|  6-8 | Not used.        |*/
+                                            /*|    5 | OLD_RLOCKED_FILES|*/
                                             /*|    4 | UNREADABLE_FILES |*/
                                             /*|    3 | OLD_LOCKED_FILES |*/
                                             /*|    2 | QUEUED_FILES     |*/

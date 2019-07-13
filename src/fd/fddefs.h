@@ -447,6 +447,8 @@ struct job
                                          /* it we just append the file.  */
                                          /* This is useful for large     */
                                          /* files.                       */
+          char          *cn_filter;      /* Change name filter part.     */
+          char          *cn_rename_to;   /* Change name rename to part.  */
           char          trans_rename_rule[MAX_RULE_HEADER_LENGTH + 1];
                                          /* FTP : Renaming files on      */
                                          /*       remote site. This is   */
@@ -904,7 +906,7 @@ extern void  calc_trl_per_process(int),
              remove_append(unsigned int, char *),
              remove_connection(struct connection *, int, time_t),
              remove_ls_data(int),
-             remove_msg(int, int),
+             remove_msg(int),
              reset_fsa(struct job *, int, int, off_t),
              reset_values(int, off_t, int, off_t, struct job *),
              send_proc_fin(int),

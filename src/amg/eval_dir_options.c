@@ -183,7 +183,7 @@ extern struct dir_data *dd;
 
 /*########################## eval_dir_options() #########################*/
 int
-eval_dir_options(int dir_pos, char *dir_options, FILE *cmd_fp)
+eval_dir_options(int dir_pos, char type, char *dir_options, FILE *cmd_fp)
 {
    int          old_file_time,
                 problems_found = 0,
@@ -205,6 +205,11 @@ eval_dir_options(int dir_pos, char *dir_options, FILE *cmd_fp)
       old_file_time = default_old_file_time * 3600;
    }
    dd[dir_pos].delete_files_flag = default_delete_files_flag;
+   if ((type == REMOTE_DIR) &&
+       (dd[dir_pos].delete_files_flag & OLD_LOCKED_FILES))
+   {
+      dd[dir_pos].delete_files_flag &= ~OLD_LOCKED_FILES;
+   }
    dd[dir_pos].unknown_file_time = -1;
    dd[dir_pos].queued_file_time = -1;
    dd[dir_pos].locked_file_time = -1;
@@ -801,9 +806,19 @@ eval_dir_options(int dir_pos, char *dir_options, FILE *cmd_fp)
                     number[length] = '\0';
                     dd[dir_pos].locked_file_time = atoi(number) * 3600;
                  }
-                 if ((dd[dir_pos].delete_files_flag & OLD_LOCKED_FILES) == 0)
+                 if (type == REMOTE_DIR)
                  {
-                    dd[dir_pos].delete_files_flag |= OLD_LOCKED_FILES;
+                    if ((dd[dir_pos].delete_files_flag & OLD_RLOCKED_FILES) == 0)
+                    {
+                       dd[dir_pos].delete_files_flag |= OLD_RLOCKED_FILES;
+                    }
+                 }
+                 else
+                 {
+                    if ((dd[dir_pos].delete_files_flag & OLD_LOCKED_FILES) == 0)
+                    {
+                       dd[dir_pos].delete_files_flag |= OLD_LOCKED_FILES;
+                    }
                  }
                  dd[dir_pos].in_dc_flag |= OLD_LOCKED_FILES_IDC;
               }

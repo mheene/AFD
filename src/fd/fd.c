@@ -104,6 +104,7 @@ DESCR__E_M1
 
 #define FD_CHECK_FSA_INTERVAL        600 /* 10 minutes. */
 #define ABNORMAL_TERM_CHECK_INTERVAL 45  /* seconds */
+#define FRA_QUEUE_CHECK_TIME         900 /* 15 minutes. */
 
 /* #define WITH_MULTI_FSA_CHECKS */
 /* #define _MACRO_DEBUG */
@@ -247,7 +248,7 @@ static double              max_threshold;
                      * files are queued in another message    \
                      * or have been removed due to age.       \
                      */                                       \
-                    remove_msg(kk, NO);                       \
+                    remove_msg(kk);                           \
                     if (kk < *no_msg_queued)                  \
                     {                                         \
                        kk--;                                  \
@@ -311,6 +312,7 @@ main(int argc, char *argv[])
 #ifdef _WITH_INTERRUPT_JOB
                     interrupt_check_time,
 #endif
+                    next_fra_queue_check_time,
                     remote_file_check_time;
    off_t            *file_size_to_send;
 #ifdef MULTI_FS_SUPPORT
@@ -545,7 +547,7 @@ main(int argc, char *argv[])
                        "FRA position %d is larger then the possible number of directories %d. Will remove job from queue.",
                        qb[i].pos, no_of_dirs);
          }
-         remove_msg(i, NO);
+         remove_msg(i);
          if (i < *no_msg_queued)
          {
             i--;
@@ -578,7 +580,7 @@ main(int argc, char *argv[])
                        last_job_id_lookup);
             if ((qb[i].pos = lookup_job_id(last_job_id_lookup)) == INCORRECT)
             {
-               remove_msg(i, NO);
+               remove_msg(i);
                if (i < *no_msg_queued)
                {
                   i--;
@@ -766,6 +768,8 @@ main(int argc, char *argv[])
                               ABNORMAL_TERM_CHECK_INTERVAL;
    fsa_check_time = ((now / FD_CHECK_FSA_INTERVAL) *
                      FD_CHECK_FSA_INTERVAL) + FD_CHECK_FSA_INTERVAL;
+   next_fra_queue_check_time = ((now / FRA_QUEUE_CHECK_TIME) *
+                                FRA_QUEUE_CHECK_TIME) + FRA_QUEUE_CHECK_TIME;
    remote_file_check_time = ((now / remote_file_check_interval) *
                              remote_file_check_interval) +
                             remote_file_check_interval;
@@ -839,7 +843,7 @@ main(int argc, char *argv[])
                      if ((faulty = zombie_check(&connection[i], now, &qb_pos,
                                                 WNOHANG)) == NO)
                      {
-                        remove_msg(qb_pos, NO);
+                        remove_msg(qb_pos);
                      }
                      else if ((faulty == YES) || (faulty == NONE))
                           {
@@ -1015,6 +1019,53 @@ system_log(DEBUG_SIGN, NULL, 0,
                                 PRIORITY_INTERRUPT_CHECK_TIME;
       }
 #endif /* _WITH_INTERRUPT_JOB */
+      if (next_fra_queue_check_time <= now)
+      {
+         if ((no_of_retrieves > 0) && (fra != NULL))
+         {
+            int gotcha,
+                j;
+
+#ifdef _DEBUG
+            system_log(DEBUG_SIGN, __FILE__, __LINE__,
+                       "Checking %d retrieve entries ...", no_of_retrieves);
+#endif
+            for (i = 0; i < no_of_retrieves; i++)
+            {
+               if (fra[retrieve_list[i]].queued > 0)
+               {
+                  gotcha = NO;
+                  for (j = 0; j < *no_msg_queued; j++)
+                  {
+                     if ((qb[j].special_flag & FETCH_JOB) &&
+                         (qb[j].pos == retrieve_list[i]) &&
+                         (fra[retrieve_list[i]].dir_id == (unsigned int)strtoul(qb[j].msg_name, (char **)NULL, 16)))
+                     {
+                        gotcha = YES;
+                        break;
+                     }
+                  }
+                  if (gotcha == NO)
+                  {
+                     system_log(DEBUG_SIGN, __FILE__, __LINE__,
+                                "Queued variable for FRA position %d (%s) is %d. But there is no job in queue! Decremeting queue counter by one. @%x",
+                                retrieve_list[i],
+                                fra[retrieve_list[i]].dir_alias,
+                                (int)fra[retrieve_list[i]].queued,
+                                fra[retrieve_list[i]].dir_id);
+                     fra[retrieve_list[i]].queued -= 1;
+                     if (fra[retrieve_list[i]].queued < 0)
+                     {
+                        fra[retrieve_list[i]].queued = 0;
+                     }
+                  }
+               }
+            }
+         }
+         next_fra_queue_check_time = ((now / FRA_QUEUE_CHECK_TIME) *
+                                      FRA_QUEUE_CHECK_TIME) +
+                                     FRA_QUEUE_CHECK_TIME;
+      }
 
       /*
        * Check if we must check for files on any remote system.
@@ -1029,14 +1080,13 @@ system_log(DEBUG_SIGN, NULL, 0,
                for (i = 0; i < no_of_retrieves; i++)
                {
                   if ((fra[retrieve_list[i]].queued == 0) &&
-                      ((fsa[fra[retrieve_list[i]].fsa_pos].keep_connected == 0) ||
-                       (fsa[fra[retrieve_list[i]].fsa_pos].protocol_options & KEEP_CON_NO_FETCH_2) ||
-                       (check_dir_in_use(retrieve_list[i]) == NO)) &&
                       ((fra[retrieve_list[i]].dir_flag & DIR_DISABLED) == 0) &&
                       ((fsa[fra[retrieve_list[i]].fsa_pos].special_flag & HOST_DISABLED) == 0) &&
                       ((fsa[fra[retrieve_list[i]].fsa_pos].host_status & STOP_TRANSFER_STAT) == 0) &&
                       ((fra[retrieve_list[i]].no_of_time_entries == 0) ||
-                       (fra[retrieve_list[i]].next_check_time <= now)))
+                       (fra[retrieve_list[i]].next_check_time <= now)) &&
+                      ((fsa[fra[retrieve_list[i]].fsa_pos].active_transfers == 0) ||
+                       (check_dir_in_use(retrieve_list[i]) == NO)))
                   {
                      int    qb_pos;
                      double msg_number = ((double)fra[retrieve_list[i]].priority - 47.0) *
@@ -1133,8 +1183,13 @@ system_log(DEBUG_SIGN, NULL, 0,
                      if ((fsa[fra[retrieve_list[i]].fsa_pos].error_counter <= *(unsigned char *)((char *)fsa - AFD_START_ERROR_OFFSET_END)) &&
                          (stop_flag == 0))
                      {
-                        qb[qb_pos].pid = start_process(fra[retrieve_list[i]].fsa_pos,
-                                                       qb_pos, now, NO);
+                        if ((qb[qb_pos].pid = start_process(fra[retrieve_list[i]].fsa_pos,
+                                                            qb_pos, now, NO)) == REMOVED)
+                        {
+                           ABS_REDUCE(fra[retrieve_list[i]].fsa_pos);
+                           fra[retrieve_list[i]].queued -= 1;
+                           (*no_msg_queued)--;
+                        }
                      }
                      else
                      {
@@ -1642,7 +1697,7 @@ system_log(DEBUG_SIGN, NULL, 0,
                         {
 # endif
                            ABS_REDUCE(fsa_pos);
-                           remove_msg(qb_pos, NO);
+                           remove_msg(qb_pos);
 # ifdef _WITH_INTERRUPT_JOB
                         }
 # endif
@@ -1767,7 +1822,7 @@ system_log(DEBUG_SIGN, NULL, 0,
                                                       time(NULL),
                                                       YES)) == REMOVED)
                   {
-                     remove_msg(qb_pos, NO);
+                     remove_msg(qb_pos);
                   }
                }
             }
@@ -2171,7 +2226,7 @@ system_log(DEBUG_SIGN, NULL, 0,
                       * files are queued in another message
                       * or have been removed due to age.
                       */
-                     remove_msg(i, NO);
+                     remove_msg(i);
                      if (i < *no_msg_queued)
                      {
                         i--;
@@ -2654,7 +2709,7 @@ start_process(int fsa_pos, int qb_pos, time_t current_time, int retry)
                            calc_trl_per_process(fsa_pos);
                         }
                         ABS_REDUCE(fsa_pos);
-                        remove_msg(exec_qb_pos, NO);
+                        remove_msg(exec_qb_pos);
 
                         return(qb[qb_pos].pid);
                      }
@@ -2908,6 +2963,13 @@ start_process(int fsa_pos, int qb_pos, time_t current_time, int retry)
                      connection[pos].fsa_pos = -1;
                      connection[pos].fra_pos = -1;
                      connection[pos].pid = 0;
+                  }
+               }
+               else
+               {
+                  if (connection[pos].job_no == REMOVED)
+                  {
+                     pid = REMOVED;
                   }
                }
             }
@@ -3391,7 +3453,7 @@ check_zombie_queue(time_t now, int qb_pos)
                         (pri_pid_t)connection[qb[qb_pos].connect_pos].pid,
                         connection[qb[qb_pos].connect_pos].msg_name, faulty);
 #endif
-         remove_msg(qb_pos, NO);
+         remove_msg(qb_pos);
       }
       else if ((faulty == YES) || (faulty == NONE))
            {
@@ -3447,7 +3509,7 @@ check_zombie_queue(time_t now, int qb_pos)
                if ((faulty = zombie_check(&connection[zwl[i]], now, &tmp_qb_pos,
                                           WNOHANG)) == NO)
                {
-                  remove_msg(tmp_qb_pos, NO);
+                  remove_msg(tmp_qb_pos);
                   remove_from_zombie_queue = YES;
                }
                else if ((faulty == YES) || (faulty == NONE))
@@ -3563,7 +3625,8 @@ zombie_check(struct connection *p_con,
                         fsa[p_con->fsa_pos].host_toggle = fsa[p_con->fsa_pos].original_toggle_pos;
                         fsa[p_con->fsa_pos].original_toggle_pos = NONE;
                         fsa[p_con->fsa_pos].host_dsp_name[(int)fsa[p_con->fsa_pos].toggle_pos] = fsa[p_con->fsa_pos].host_toggle_str[(int)fsa[p_con->fsa_pos].host_toggle];
-                        (void)strcpy(tr_hostname, fsa[p_con->fsa_pos].host_dsp_name);
+                        (void)my_strncpy(tr_hostname, fsa[p_con->fsa_pos].host_dsp_name,
+                                         MAX_HOSTNAME_LENGTH + 2);
                         (void)rec(transfer_log_fd, INFO_SIGN,
                                   "%-*s[%d]: Switching back to host <%s> after successful transfer.\n",
                                   MAX_HOSTNAME_LENGTH, tr_hostname,
@@ -3632,7 +3695,8 @@ zombie_check(struct connection *p_con,
                       * moved to the faulty directory. So no further action is
                       * necessary.
                       */
-                     (void)strcpy(tr_hostname, fsa[p_con->fsa_pos].host_dsp_name);
+                     (void)my_strncpy(tr_hostname, fsa[p_con->fsa_pos].host_dsp_name,
+                                      MAX_HOSTNAME_LENGTH + 2);
                      (void)rec(transfer_log_fd, WARN_SIGN,
                                "%-*s[%d]: Syntax for calling program wrong. (%s %d)\n",
                                MAX_HOSTNAME_LENGTH, tr_hostname, p_con->job_no,
@@ -3714,7 +3778,8 @@ zombie_check(struct connection *p_con,
                   {
                      char tr_hostname[MAX_HOSTNAME_LENGTH + 2];
 
-                     (void)strcpy(tr_hostname, fsa[p_con->fsa_pos].host_dsp_name);
+                     (void)my_strncpy(tr_hostname, fsa[p_con->fsa_pos].host_dsp_name,
+                                      MAX_HOSTNAME_LENGTH + 2);
                      (void)rec(transfer_log_fd, WARN_SIGN,
                                "%-*s[%d]: Failed to send mail. (%s %d)\n",
                                MAX_HOSTNAME_LENGTH, tr_hostname, p_con->job_no,
@@ -3939,7 +4004,8 @@ zombie_check(struct connection *p_con,
                   {
                      char tr_hostname[MAX_HOSTNAME_LENGTH + 2];
 
-                     (void)strcpy(tr_hostname, fsa[p_con->fsa_pos].host_dsp_name);
+                     (void)my_strncpy(tr_hostname, fsa[p_con->fsa_pos].host_dsp_name,
+                                      MAX_HOSTNAME_LENGTH + 2);
                      if (fsa[p_con->fsa_pos].first_error_time == 0L)
                      {
                         fsa[p_con->fsa_pos].first_error_time = now;
@@ -3955,7 +4021,8 @@ zombie_check(struct connection *p_con,
                   {
                      char tr_hostname[MAX_HOSTNAME_LENGTH + 2];
 
-                     (void)strcpy(tr_hostname, fsa[p_con->fsa_pos].host_dsp_name);
+                     (void)my_strncpy(tr_hostname, fsa[p_con->fsa_pos].host_dsp_name,
+                                      MAX_HOSTNAME_LENGTH + 2);
                      (void)rec(transfer_log_fd, WARN_SIGN,
                                "%-*s[%d]: Disconnected. Failed to lock region. (%s %d)\n",
                                MAX_HOSTNAME_LENGTH, tr_hostname, p_con->job_no,
@@ -3967,7 +4034,8 @@ zombie_check(struct connection *p_con,
                   {
                      char tr_hostname[MAX_HOSTNAME_LENGTH + 2];
 
-                     (void)strcpy(tr_hostname, fsa[p_con->fsa_pos].host_dsp_name);
+                     (void)my_strncpy(tr_hostname, fsa[p_con->fsa_pos].host_dsp_name,
+                                      MAX_HOSTNAME_LENGTH + 2);
                      (void)rec(transfer_log_fd, WARN_SIGN,
                                "%-*s[%d]: Disconnected. Failed to unlock region. (%s %d)\n",
                                MAX_HOSTNAME_LENGTH, tr_hostname, p_con->job_no,
@@ -4085,7 +4153,8 @@ zombie_check(struct connection *p_con,
                   {
                      char tr_hostname[MAX_HOSTNAME_LENGTH + 2];
 
-                     (void)strcpy(tr_hostname, fsa[p_con->fsa_pos].host_dsp_name);
+                     (void)my_strncpy(tr_hostname, fsa[p_con->fsa_pos].host_dsp_name,
+                                      MAX_HOSTNAME_LENGTH + 2);
                      (void)rec(transfer_log_fd, WARN_SIGN,
                                "%-*s[%d]: Failed to allocate memory. (%s %d)\n",
                                MAX_HOSTNAME_LENGTH, tr_hostname, p_con->job_no,
@@ -4097,7 +4166,8 @@ zombie_check(struct connection *p_con,
                   {
                      char tr_hostname[MAX_HOSTNAME_LENGTH + 2];
 
-                     (void)strcpy(tr_hostname, fsa[p_con->fsa_pos].host_dsp_name);
+                     (void)my_strncpy(tr_hostname, fsa[p_con->fsa_pos].host_dsp_name,
+                                      MAX_HOSTNAME_LENGTH + 2);
                      (void)rec(transfer_log_fd, WARN_SIGN,
                                "%-*s[%d]: Disconnected due to an unknown error (%d). (%s %d)\n",
                                MAX_HOSTNAME_LENGTH, tr_hostname, p_con->job_no,
@@ -4182,7 +4252,8 @@ zombie_check(struct connection *p_con,
                  fsa[p_con->fsa_pos].job_status[p_con->job_no].file_name_in_use[0] = '\0';
                  fsa[p_con->fsa_pos].job_status[p_con->job_no].file_name_in_use[1] = 0;
 
-                 (void)strcpy(tr_hostname, fsa[p_con->fsa_pos].host_dsp_name);
+                 (void)my_strncpy(tr_hostname, fsa[p_con->fsa_pos].host_dsp_name,
+                                  MAX_HOSTNAME_LENGTH + 2);
                  signum = WTERMSIG(status);
                  if (signum == SIGUSR1)
                  {
@@ -4211,7 +4282,8 @@ zombie_check(struct connection *p_con,
               {
                  char tr_hostname[MAX_HOSTNAME_LENGTH + 2];
 
-                 (void)strcpy(tr_hostname, fsa[p_con->fsa_pos].host_dsp_name);
+                 (void)my_strncpy(tr_hostname, fsa[p_con->fsa_pos].host_dsp_name,
+                                  MAX_HOSTNAME_LENGTH + 2);
                  (void)rec(transfer_log_fd, WARN_SIGN,
 #if SIZEOF_PID_T == 4
                            "%-*s[%d]: Process stopped by signal %d for transfer job (%d). (%s %d)\n",
@@ -5214,12 +5286,11 @@ get_free_disp_pos(int pos)
       {
          if (fsa[pos].job_status[i].job_id == fra[qb[qb_pos].pos].dir_id)
          {
-            system_log(DEBUG_SIGN, __FILE__, __LINE__,
+            system_log(WARN_SIGN, __FILE__, __LINE__,
                        "Prevented multiple start of scanning same remote dir. [fsa_pos=%d fra_pos=%d qb_pos=%d i=%d] @%x",
                        pos, qb[qb_pos].pos, qb_pos, i,
                        fra[qb[qb_pos].pos].dir_id);
-            remove_msg(qb_pos, YES);
-            return(INCORRECT);
+            return(REMOVED);
          }
       }
    }
@@ -5275,7 +5346,7 @@ get_free_disp_pos(int pos)
    }
 
    /*
-    * Sometimes we constantly hang here in a tigth loop. Lets find out
+    * Sometimes we constantly hang here in a tight loop. Lets find out
     * if this is the case and when yes, lets exit so init_afd restarts
     * fd again.
     */
@@ -5370,7 +5441,7 @@ fd_exit(void)
                         {
                            /* Process was in disconnection phase, so we */
                            /* can remove the message from the queue.    */
-                           remove_msg(qb_pos, NO);
+                           remove_msg(qb_pos);
                         }
                         else
                         {
@@ -5386,7 +5457,7 @@ fd_exit(void)
                   }
                   else if (faulty == NO)
                        {
-                          remove_msg(qb_pos, NO);
+                          remove_msg(qb_pos);
                        }
                }
             } /* if (connection[i].pid > 0) */
@@ -5447,7 +5518,7 @@ fd_exit(void)
                            {
                               /* Process was in disconnection phase, so we */
                               /* can remove the message from the queue.    */
-                              remove_msg(qb_pos, NO);
+                              remove_msg(qb_pos);
                            }
                            else
                            {
@@ -5463,7 +5534,7 @@ fd_exit(void)
                      }
                      else if (faulty == NO)
                           {
-                             remove_msg(qb_pos, NO);
+                             remove_msg(qb_pos);
                           }
                   }
                }
