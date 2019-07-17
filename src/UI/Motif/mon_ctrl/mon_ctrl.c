@@ -32,6 +32,7 @@ DESCR__S_M1
  **            [-u[ <user>]]
  **            [-f <font name>]
  **            [-no_input]
+ **            [-bs]
  **
  ** DESCRIPTION
  **
@@ -49,6 +50,11 @@ DESCR__S_M1
  **   27.02.2005 H.Kiehl Option to switch between two AFD's.
  **   08.06.2005 H.Kiehl Added button line at bottom.
  **   14.09.2016 H.Kiehl Added production log.
+ **   17.07.2019 H.Kiehl Added parameter -bs to disable backing store
+ **                      and save under.
+ **                      In popup menu added calling remote progs
+ **                      afd_ctrl, receive log, system log and transfer
+ **                      log.
  **
  */
 DESCR__E_M1
@@ -132,7 +138,7 @@ Widget                  appshell,
                         lw[4],          /* AFD load */
                         lsw[3],         /* Select line style */
                         oow[3],         /* Other options */
-                        pw[6];          /* Popup menu */
+                        pw[10];         /* Popup menu */
 Window                  button_window,
                         label_window,
                         line_window;
@@ -146,6 +152,7 @@ int                     bar_thickness_3,
                         his_log_set,
                         msa_fd = -1,
                         msa_id,
+                        no_backing_store,
                         no_input,
                         line_length,
                         line_height = 0,
@@ -592,7 +599,7 @@ init_mon_ctrl(int *argc, char *argv[], char *window_title)
        (get_arg(argc, argv, "--help", NULL, 0) == SUCCESS))
    {
       (void)fprintf(stdout,
-                    "Usage: %s[ -w <work_dir>][ -p <profile/role>][ -u[ <user>][ -no_input][ -f <font name>]\n",
+                    "Usage: %s[ -w <work_dir>][ -p <profile/role>][ -u[ <user>][ -no_input][ -f <font name>][ -bs]\n",
                     argv[0]);
       exit(SUCCESS);
    }
@@ -620,6 +627,17 @@ init_mon_ctrl(int *argc, char *argv[], char *window_title)
    {
       no_input = False;
    }
+
+   /* Disable backing store and save under? */
+   if (get_arg(argc, argv, "-bs", NULL, 0) == SUCCESS)
+   {
+      no_backing_store = True;
+   }
+   else
+   {
+      no_backing_store = False;
+   }
+
    if (get_arg(argc, argv, "-p", profile, MAX_PROFILE_NAME_LENGTH) == INCORRECT)
    {
       user_offset = 0;
@@ -1198,24 +1216,6 @@ init_menu_bar(Widget mainform_w, Widget *menu_w)
       XtAddCallback(ow[MON_LOG_W], XmNactivateCallback, mon_popup_cb,
                     (XtPointer)MON_LOG_SEL);
    }
-#ifdef WITH_CTRL_ACCELERATOR
-   ow[MON_SELECT_W] = XtVaCreateManagedWidget("Search + (De)Select (Ctrl+s)",
-#else
-   ow[MON_SELECT_W] = XtVaCreateManagedWidget("Search + (De)Select (Alt+s)",
-#endif
-                         xmPushButtonWidgetClass, pull_down_w,
-                         XmNfontList,             fontlist,
-#ifdef WHEN_WE_KNOW_HOW_TO_FIX_THIS
-                         XmNmnemonic,             'S',
-#endif
-#ifdef WITH_CTRL_ACCELERATOR
-                         XmNaccelerator,          "Ctrl<Key>S",
-#else
-                         XmNaccelerator,          "Alt<Key>S",
-#endif
-                         NULL);
-   XtAddCallback(ow[MON_SELECT_W], XmNactivateCallback, select_afd_dialog,
-                 (XtPointer)0);
    if (mcp.retry != NO_PERMISSION)
    {
 #ifdef WITH_CTRL_ACCELERATOR
@@ -1258,6 +1258,24 @@ init_menu_bar(Widget mainform_w, Widget *menu_w)
       XtAddCallback(ow[MON_SWITCH_W], XmNactivateCallback, mon_popup_cb,
                     (XtPointer)MON_SWITCH_SEL);
    }
+#ifdef WITH_CTRL_ACCELERATOR
+   ow[MON_SELECT_W] = XtVaCreateManagedWidget("Search + (De)Select (Ctrl+s)",
+#else
+   ow[MON_SELECT_W] = XtVaCreateManagedWidget("Search + (De)Select (Alt+s)",
+#endif
+                         xmPushButtonWidgetClass, pull_down_w,
+                         XmNfontList,             fontlist,
+#ifdef WHEN_WE_KNOW_HOW_TO_FIX_THIS
+                         XmNmnemonic,             'S',
+#endif
+#ifdef WITH_CTRL_ACCELERATOR
+                         XmNaccelerator,          "Ctrl<Key>S",
+#else
+                         XmNaccelerator,          "Alt<Key>S",
+#endif
+                         NULL);
+   XtAddCallback(ow[MON_SELECT_W], XmNactivateCallback, select_afd_dialog,
+                 (XtPointer)0);
    if ((traceroute_cmd != NULL) || (ping_cmd != NULL))
    {
       XtVaCreateManagedWidget("Separator",
@@ -1778,7 +1796,11 @@ init_popup_menu(Widget line_window_w)
        (mcp.retry != NO_PERMISSION) ||
        (mcp.switch_afd != NO_PERMISSION) ||
        (mcp.mon_info != NO_PERMISSION) ||
-       (mcp.disable != NO_PERMISSION))
+       (mcp.disable != NO_PERMISSION) ||
+       (mcp.afd_ctrl != NO_PERMISSION) ||
+       (mcp.show_rlog != NO_PERMISSION) ||
+       (mcp.show_slog != NO_PERMISSION) ||
+       (mcp.show_tlog != NO_PERMISSION))
    {
       if (mcp.show_ms_log != NO_PERMISSION)
       {
@@ -1883,6 +1905,71 @@ init_popup_menu(Widget line_window_w)
                        mon_popup_cb, (XtPointer)MON_DISABLE_SEL);
          XtManageChild(pw[5]);
          XmStringFree(x_string);
+      }
+      if ((mcp.afd_ctrl != NO_PERMISSION) ||
+          (mcp.show_rlog != NO_PERMISSION) ||
+          (mcp.show_slog != NO_PERMISSION) ||
+          (mcp.show_tlog != NO_PERMISSION))
+      {
+         XtVaCreateManagedWidget("Separator",
+                                 xmSeparatorWidgetClass, popupmenu,
+                                 NULL);
+         if (mcp.afd_ctrl != NO_PERMISSION)
+         {
+            argcount = 0;
+            x_string = XmStringCreateLocalized("AFD Control");
+            XtSetArg(args[argcount], XmNlabelString, x_string); argcount++;
+#ifdef WITH_CTRL_ACCELERATOR
+            XtSetArg(args[argcount], XmNaccelerator, "Ctrl<Key>A"); argcount++;
+#else
+            XtSetArg(args[argcount], XmNaccelerator, "Alt<Key>A"); argcount++;
+#endif
+#ifdef WHEN_WE_KNOW_HOW_TO_FIX_THIS
+            XtSetArg(args[argcount], XmNmnemonic, 'A'); argcount++;
+#endif
+            XtSetArg(args[argcount], XmNfontList, fontlist); argcount++;
+            pw[6] = XmCreatePushButton(popupmenu, "AFD Control", args, argcount);
+            XtAddCallback(pw[6], XmNactivateCallback,
+                          start_remote_prog, (XtPointer)AFD_CTRL_SEL);
+            XtManageChild(pw[6]);
+            XmStringFree(x_string);
+         }
+         if (mcp.show_rlog != NO_PERMISSION)
+         {
+            argcount = 0;
+            x_string = XmStringCreateLocalized("Receive Log");
+            XtSetArg(args[argcount], XmNlabelString, x_string); argcount++;
+            XtSetArg(args[argcount], XmNfontList, fontlist); argcount++;
+            pw[7] = XmCreatePushButton(popupmenu, "Receive Log", args, argcount);
+            XtAddCallback(pw[7], XmNactivateCallback,
+                          start_remote_prog, (XtPointer)R_LOG_SEL);
+            XtManageChild(pw[7]);
+            XmStringFree(x_string);
+         }
+         if (mcp.show_slog != NO_PERMISSION)
+         {
+            argcount = 0;
+            x_string = XmStringCreateLocalized("System Log");
+            XtSetArg(args[argcount], XmNlabelString, x_string); argcount++;
+            XtSetArg(args[argcount], XmNfontList, fontlist); argcount++;
+            pw[8] = XmCreatePushButton(popupmenu, "System Log", args, argcount);
+            XtAddCallback(pw[8], XmNactivateCallback,
+                          start_remote_prog, (XtPointer)S_LOG_SEL);
+            XtManageChild(pw[8]);
+            XmStringFree(x_string);
+         }
+         if (mcp.show_tlog != NO_PERMISSION)
+         {
+            argcount = 0;
+            x_string = XmStringCreateLocalized("Transfer Log");
+            XtSetArg(args[argcount], XmNlabelString, x_string); argcount++;
+            XtSetArg(args[argcount], XmNfontList, fontlist); argcount++;
+            pw[9] = XmCreatePushButton(popupmenu, "Transfer Log", args, argcount);
+            XtAddCallback(pw[9], XmNactivateCallback,
+                          start_remote_prog, (XtPointer)T_LOG_SEL);
+            XtManageChild(pw[9]);
+            XmStringFree(x_string);
+         }
       }
    }
 

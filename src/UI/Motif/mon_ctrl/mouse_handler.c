@@ -1,6 +1,6 @@
 /*
  *  mouse_handler.c - Part of AFD, an automatic file distribution program.
- *  Copyright (c) 1998 - 2017 Holger Kiehl <Holger.Kiehl@dwd.de>
+ *  Copyright (c) 1998 - 2019 Holger Kiehl <Holger.Kiehl@dwd.de>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -53,6 +53,8 @@ DESCR__S_M3
  **   21.10.2003 H.Kiehl Log everything done by mon_ctrl dialog.
  **   27.06.2004 H.Kiehl Added error history.
  **   27.02.2005 H.Kiehl Option to switch between two AFD's.
+ **   17.07.2019 H.Kiehl Option to disable backing store and save
+ **                      under.
  **
  */
 DESCR__E_M3
@@ -111,6 +113,7 @@ extern GC                      letter_gc,
                                white_line_gc,
                                led_gc;
 extern int                     depth,
+                               no_backing_store,
                                no_of_active_process,
                                no_of_afds,
                                no_of_afds_invisible,
@@ -1381,7 +1384,7 @@ start_remote_prog(Widget    w,
                  "You must first select an AFD!\nUse mouse button 1 together with the SHIFT or CTRL key.");
       return;
    }
-   if ((args = malloc(21 * sizeof(char *))) == NULL)
+   if ((args = malloc(22 * sizeof(char *))) == NULL)
    {
       (void)xrec(FATAL_DIALOG, "malloc() error : %s [%d] (%s %d)",
                  strerror(errno), errno, __FILE__, __LINE__);
@@ -1479,6 +1482,11 @@ start_remote_prog(Widget    w,
                   {
                      offset = 0;
                   }
+                  if (no_backing_store == True)
+                  {
+                     args[arg_count + display_offset + offset + 10] = "-bs";
+                     offset += 1;
+                  }
                   if (profile[0] != '\0')
                   {
                      args[arg_count + display_offset + offset + 10] = "-p";
@@ -1499,7 +1507,9 @@ start_remote_prog(Widget    w,
                   args[arg_count + display_offset + offset] = SHOW_LOG;
                   args[arg_count + display_offset + offset + 1] = "-f";
                   args[arg_count + display_offset + offset + 2] = font_name;
-                  offset += 3;
+                  args[arg_count + display_offset + offset + 3] = "-t";
+                  args[arg_count + display_offset + offset + 4] = msa[i].afd_alias;
+                  offset += 5;
                   if (fake_user[0] != '\0')
                   {
                      args[arg_count + display_offset + offset] = "-u";
@@ -1523,15 +1533,17 @@ start_remote_prog(Widget    w,
                args[arg_count + display_offset + 5] = SHOW_ELOG;
                args[arg_count + display_offset + 6] = "-f";
                args[arg_count + display_offset + 7] = font_name;
+               args[arg_count + display_offset + 8] = "-t";
+               args[arg_count + display_offset + 9] = msa[i].afd_alias;
                if (fake_user[0] == '\0')
                {
-                  args[arg_count + display_offset + 8] = NULL;
+                  args[arg_count + display_offset + 10] = NULL;
                }
                else
                {
-                  args[arg_count + display_offset + 8] = "-u";
-                  args[arg_count + display_offset + 9] = fake_user;
-                  args[arg_count + display_offset + 10] = NULL;
+                  args[arg_count + display_offset + 10] = "-u";
+                  args[arg_count + display_offset + 11] = fake_user;
+                  args[arg_count + display_offset + 12] = NULL;
                }
                break;
 
@@ -1542,7 +1554,9 @@ start_remote_prog(Widget    w,
                   args[arg_count + display_offset + offset] = SHOW_LOG;
                   args[arg_count + display_offset + offset + 1] = "-f";
                   args[arg_count + display_offset + offset + 2] = font_name;
-                  offset += 3;
+                  args[arg_count + display_offset + offset + 3] = "-t";
+                  args[arg_count + display_offset + offset + 4] = msa[i].afd_alias;
+                  offset += 5;
                   if (fake_user[0] != '\0')
                   {
                      args[arg_count + display_offset + offset] = "-u";
@@ -1569,7 +1583,9 @@ start_remote_prog(Widget    w,
                   args[arg_count + display_offset + offset] = SHOW_LOG;
                   args[arg_count + display_offset + offset + 1] = "-f";
                   args[arg_count + display_offset + offset + 2] = font_name;
-                  offset += 3;
+                  args[arg_count + display_offset + offset + 3] = "-t";
+                  args[arg_count + display_offset + offset + 4] = msa[i].afd_alias;
+                  offset += 5;
                   if (fake_user[0] != '\0')
                   {
                      args[arg_count + display_offset + offset] = "-u";
@@ -1593,15 +1609,17 @@ start_remote_prog(Widget    w,
                args[arg_count + display_offset + 5] = SHOW_ILOG;
                args[arg_count + display_offset + 6] = "-f";
                args[arg_count + display_offset + 7] = font_name;
+               args[arg_count + display_offset + 8] = "-t";
+               args[arg_count + display_offset + 9] = msa[i].afd_alias;
                if (fake_user[0] == '\0')
                {
-                  args[arg_count + display_offset + 8] = NULL;
+                  args[arg_count + display_offset + 10] = NULL;
                }
                else
                {
-                  args[arg_count + display_offset + 8] = "-u";
-                  args[arg_count + display_offset + 9] = fake_user;
-                  args[arg_count + display_offset + 10] = NULL;
+                  args[arg_count + display_offset + 10] = "-u";
+                  args[arg_count + display_offset + 11] = fake_user;
+                  args[arg_count + display_offset + 12] = NULL;
                }
                break;
 
@@ -1609,15 +1627,17 @@ start_remote_prog(Widget    w,
                args[arg_count + display_offset + 5] = SHOW_PLOG;
                args[arg_count + display_offset + 6] = "-f";
                args[arg_count + display_offset + 7] = font_name;
+               args[arg_count + display_offset + 8] = "-t";
+               args[arg_count + display_offset + 9] = msa[i].afd_alias;
                if (fake_user[0] == '\0')
                {
-                  args[arg_count + display_offset + 8] = NULL;
+                  args[arg_count + display_offset + 10] = NULL;
                }
                else
                {
-                  args[arg_count + display_offset + 8] = "-u";
-                  args[arg_count + display_offset + 9] = fake_user;
-                  args[arg_count + display_offset + 10] = NULL;
+                  args[arg_count + display_offset + 10] = "-u";
+                  args[arg_count + display_offset + 11] = fake_user;
+                  args[arg_count + display_offset + 12] = NULL;
                }
                break;
 
@@ -1625,15 +1645,17 @@ start_remote_prog(Widget    w,
                args[arg_count + display_offset + 5] = SHOW_OLOG;
                args[arg_count + display_offset + 6] = "-f";
                args[arg_count + display_offset + 7] = font_name;
+               args[arg_count + display_offset + 8] = "-t";
+               args[arg_count + display_offset + 9] = msa[i].afd_alias;
                if (fake_user[0] == '\0')
                {
-                  args[arg_count + display_offset + 8] = NULL;
+                  args[arg_count + display_offset + 10] = NULL;
                }
                else
                {
-                  args[arg_count + display_offset + 8] = "-u";
-                  args[arg_count + display_offset + 9] = fake_user;
-                  args[arg_count + display_offset + 10] = NULL;
+                  args[arg_count + display_offset + 10] = "-u";
+                  args[arg_count + display_offset + 11] = fake_user;
+                  args[arg_count + display_offset + 12] = NULL;
                }
                break;
 
@@ -1641,15 +1663,17 @@ start_remote_prog(Widget    w,
                args[arg_count + display_offset + 5] = SHOW_DLOG;
                args[arg_count + display_offset + 6] = "-f";
                args[arg_count + display_offset + 7] = font_name;
+               args[arg_count + display_offset + 8] = "-t";
+               args[arg_count + display_offset + 9] = msa[i].afd_alias;
                if (fake_user[0] == '\0')
                {
-                  args[arg_count + display_offset + 8] = NULL;
+                  args[arg_count + display_offset + 10] = NULL;
                }
                else
                {
-                  args[arg_count + display_offset + 8] = "-u";
-                  args[arg_count + display_offset + 9] = fake_user;
-                  args[arg_count + display_offset + 10] = NULL;
+                  args[arg_count + display_offset + 10] = "-u";
+                  args[arg_count + display_offset + 11] = fake_user;
+                  args[arg_count + display_offset + 12] = NULL;
                }
                break;
 
@@ -1660,10 +1684,12 @@ start_remote_prog(Widget    w,
                   args[arg_count + display_offset + 5] = SHOW_QUEUE;
                   args[arg_count + display_offset + 6] = "-f";
                   args[arg_count + display_offset + 7] = font_name;
+                  args[arg_count + display_offset + 8] = "-t";
+                  args[arg_count + display_offset + 9] = msa[i].afd_alias;
                   if (fake_user[0] != '\0')
                   {
-                     args[arg_count + display_offset + 8] = "-u";
-                     args[arg_count + display_offset + 9] = fake_user;
+                     args[arg_count + display_offset + 10] = "-u";
+                     args[arg_count + display_offset + 11] = fake_user;
                      offset = 2;
                   }
                   else
@@ -1672,13 +1698,13 @@ start_remote_prog(Widget    w,
                   }
                   if (profile[0] != '\0')
                   {
-                     args[arg_count + display_offset + offset + 8] = "-p";
-                     args[arg_count + display_offset + offset + 9] = profile;
-                     args[arg_count + display_offset + offset + 10] = NULL;
+                     args[arg_count + display_offset + offset + 10] = "-p";
+                     args[arg_count + display_offset + offset + 11] = profile;
+                     args[arg_count + display_offset + offset + 12] = NULL;
                   }
                   else
                   {
-                     args[arg_count + display_offset + offset + 8] = NULL;
+                     args[arg_count + display_offset + offset + 10] = NULL;
                   }
                }
                break;
@@ -1836,10 +1862,12 @@ start_remote_prog(Widget    w,
                   args[arg_count + display_offset + 5] = EDIT_HC;
                   args[arg_count + display_offset + 6] = "-f";
                   args[arg_count + display_offset + 7] = font_name;
+                  args[arg_count + display_offset + 8] = "-t";
+                  args[arg_count + display_offset + 9] = msa[i].afd_alias;
                   if (fake_user[0] != '\0')
                   {
-                     args[arg_count + display_offset + 8] = "-u";
-                     args[arg_count + display_offset + 9] = fake_user;
+                     args[arg_count + display_offset + 10] = "-u";
+                     args[arg_count + display_offset + 11] = fake_user;
                      offset = 2;
                   }
                   else
@@ -1848,13 +1876,13 @@ start_remote_prog(Widget    w,
                   }
                   if (profile[0] != '\0')
                   {
-                     args[arg_count + display_offset + offset + 8] = "-p";
-                     args[arg_count + display_offset + offset + 9] = profile;
-                     args[arg_count + display_offset + offset + 10] = NULL;
+                     args[arg_count + display_offset + offset + 10] = "-p";
+                     args[arg_count + display_offset + offset + 11] = profile;
+                     args[arg_count + display_offset + offset + 12] = NULL;
                   }
                   else
                   {
-                     args[arg_count + display_offset + offset + 8] = NULL;
+                     args[arg_count + display_offset + offset + 10] = NULL;
                   }
                }
                break;
@@ -1866,25 +1894,32 @@ start_remote_prog(Widget    w,
                   args[arg_count + display_offset + 5] = DIR_CTRL;
                   args[arg_count + display_offset + 6] = "-f";
                   args[arg_count + display_offset + 7] = font_name;
+                  args[arg_count + display_offset + 8] = "-t";
+                  args[arg_count + display_offset + 9] = msa[i].afd_alias;
                   if (fake_user[0] != '\0')
                   {
-                     args[arg_count + display_offset + 8] = "-u";
-                     args[arg_count + display_offset + 9] = fake_user;
+                     args[arg_count + display_offset + 10] = "-u";
+                     args[arg_count + display_offset + 11] = fake_user;
                      offset = 2;
                   }
                   else
                   {
                      offset = 0;
                   }
+                  if (no_backing_store == True)
+                  {
+                     args[arg_count + display_offset + offset + 10] = "-bs";
+                     offset += 1;
+                  }
                   if (profile[0] != '\0')
                   {
-                     args[arg_count + display_offset + offset + 8] = "-p";
-                     args[arg_count + display_offset + offset + 9] = profile;
-                     args[arg_count + display_offset + offset + 10] = NULL;
+                     args[arg_count + display_offset + offset + 10] = "-p";
+                     args[arg_count + display_offset + offset + 11] = profile;
+                     args[arg_count + display_offset + offset + 12] = NULL;
                   }
                   else
                   {
-                     args[arg_count + display_offset + offset + 8] = NULL;
+                     args[arg_count + display_offset + offset + 10] = NULL;
                   }
                }
                break;
