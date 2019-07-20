@@ -75,6 +75,8 @@ DESCR__E_M1
 
 /* #define WITH_MEMCHECK */
 #define WITH_CHECK_SINGLE_RETRIEVE_JOB 1
+/* #define WITH_MULTIPLE_START_RESTART */
+#define FD_QUEUE_THRESHOLD             4096
 
 #include <stdio.h>            /* fprintf()                               */
 #include <string.h>           /* strcpy(), strcat(), strerror(),         */
@@ -295,6 +297,9 @@ main(int argc, char *argv[])
                     status,
                     status_done,
                     max_fd,
+#ifdef WITH_MULTIPLE_START_RESTART
+                    multiple_start_errors = 0,
+#endif
                     nmsg_bytes_read = 0,
                     nmsg_bytes_buffered;
    unsigned int     *files_to_send,
@@ -591,6 +596,24 @@ main(int argc, char *argv[])
    }
 
    /*
+    * Initialize jobs_queued but only if the queue is not to large.
+    */
+   if (*no_msg_queued == 0)
+   {
+      for (i = 0; i < no_of_hosts; i++)
+      {
+         fsa[i].jobs_queued = 0;
+      }
+   }
+   else if (*no_msg_queued < FD_QUEUE_THRESHOLD)
+        {
+           for (i = 0; i < no_of_hosts; i++)
+           {
+              fsa[i].jobs_queued = recount_jobs_queued(i);
+           }
+        }
+
+   /*
     * Determine the size of the fifo buffer. Then create a buffer
     * large enough to hold the data from a fifo.
     */
@@ -612,6 +635,7 @@ main(int argc, char *argv[])
                  "malloc() error [%d bytes] : %s", fifo_size, strerror(errno));
       exit(INCORRECT);
    }
+   nmsg_read_ptr = nmsg_fifo_buffer; /* Silence compiler warning */
 
 #ifdef WITH_ERROR_QUEUE
    if (attach_error_queue() == INCORRECT)
@@ -1194,7 +1218,38 @@ system_log(DEBUG_SIGN, NULL, 0,
                         if (start_process(fra[retrieve_list[i]].fsa_pos,
                                           qb_pos, now, NO) == REMOVED)
                         {
+                           if (qb[qb_pos].pos < no_of_dirs)
+                           {
+                              if ((fra[retrieve_list[i]].fsa_pos >= 0) &&
+                                  (fra[retrieve_list[i]].fsa_pos < no_of_hosts))
+                              {
+                                 ABS_REDUCE(fra[retrieve_list[i]].fsa_pos);
+                              }
+                              else
+                              {
+                                 system_log(ERROR_SIGN, __FILE__, __LINE__,
+                                            "Unable to reduce jobs_queued for FSA position %d since it is out of range (0 - %d), for queue position %d (i = %d).",
+                                            fra[retrieve_list[i]].fsa_pos,
+                                            no_of_hosts, retrieve_list[i],
+                                            qb_pos);
+                              }
+                           }
+                           else
+                           {
+                              system_log(WARN_SIGN, __FILE__, __LINE__,
+                                         "FRA position %d is larger then the possible number of directories %d. Will remove job from queue.",
+                                         retrieve_list[i], no_of_dirs);
+                           }
                            remove_msg(qb_pos, YES);
+#ifdef WITH_MULTIPLE_START_RESTART
+                           multiple_start_errors++;
+                           if (multiple_start_errors == 3)
+                           {
+                              system_log(ERROR_SIGN, __FILE__, __LINE__,
+                                         "Something wrong with internal database, terminating for a new restart.");
+                              exit(PROCESS_NEEDS_RESTART);
+                           }
+#endif
                         }
                      }
                      else
@@ -5297,9 +5352,14 @@ get_free_disp_pos(int pos)
          if (fsa[pos].job_status[i].job_id == fra[qb[qb_pos].pos].dir_id)
          {
             system_log(WARN_SIGN, __FILE__, __LINE__,
-                       "Prevented multiple start of scanning same remote dir. [fsa_pos=%d fra_pos=%d qb_pos=%d i=%d] @%x",
+                       "Prevented multiple start of scanning same remote dir. [fsa_pos=%d fra_pos=%d qb_pos=%d i=%d queued=%d] @%x",
                        pos, qb[qb_pos].pos, qb_pos, i,
-                       fra[qb[qb_pos].pos].dir_id);
+                       fra[qb[qb_pos].pos].dir_id,
+                       (int)fra[qb[qb_pos].pos].queued);
+            if (fra[qb[qb_pos].pos].queued == 0)
+            {
+               fra[qb[qb_pos].pos].queued = 1;
+            }
             return(REMOVED);
          }
       }
