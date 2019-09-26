@@ -225,6 +225,7 @@ main(int argc, char *argv[])
                     append_count = 0,
                     *buffer = NULL,
                     *created_path = NULL,
+                    file_name_in_use[MAX_FILENAME_LENGTH],
                     final_filename[MAX_RECIPIENT_LENGTH + MAX_FILENAME_LENGTH],
                     initial_filename[MAX_RECIPIENT_LENGTH + MAX_FILENAME_LENGTH],
                     remote_filename[MAX_RECIPIENT_LENGTH + MAX_FILENAME_LENGTH],
@@ -664,24 +665,44 @@ main(int argc, char *argv[])
          additional_length = 0;
          if (gsf_check_fsa(p_db) != NEITHER)
          {
-            if ((fsa->active_transfers > 1) &&
-                (*p_file_size_buffer > blocksize))
-            {
-               int file_is_duplicate = NO;
+            int file_is_duplicate = NO;
 
-               /*
-                * Check if this file is not currently being transfered!
-                */
-               for (j = 0; j < fsa->allowed_transfers; j++)
+#ifdef LOCK_DEBUG
+            lock_region_w(fsa_fd, db.lock_offset + LOCK_FIU, __FILE__, __LINE__);
+#else
+            lock_region_w(fsa_fd, db.lock_offset + LOCK_FIU);
+#endif
+
+            /*
+             * Check if this file is not currently being transfered!
+             */
+            for (j = 0; j < fsa->allowed_transfers; j++)
+            {
+               if ((j != db.job_no) &&
+                   (fsa->job_status[j].job_id == db.id.job) &&
+                   (fsa->job_status[j].unique_name[1] > 1) &&
+                   (fsa->job_status[j].unique_name[2] > 6) &&
+                   (fsa->job_status[j].file_size_in_use != 0))
                {
-                  if ((j != db.job_no) &&
-                      (fsa->job_status[j].job_id == fsa->job_status[(int)db.job_no].job_id) &&
-                      (CHECK_STRCMP(fsa->job_status[j].file_name_in_use, p_file_name_buffer) == 0))
+                  (void)memcpy(file_name_in_use,
+                               fsa->job_status[j].file_name_in_use,
+                               MAX_FILENAME_LENGTH);
+                  if (CHECK_STRNCMP(file_name_in_use, p_file_name_buffer,
+                                    MAX_FILENAME_LENGTH) == 0)
                   {
 #ifdef _DELETE_LOG
                      size_t dl_real_size;
 #endif
+                     off_t  file_size_in_use,
+                            file_size_in_use_done;
+                     char   connect_status,
+                            unique_name[MAX_MSG_NAME_LENGTH];
 
+                     file_size_in_use = fsa->job_status[j].file_size_in_use;
+                     file_size_in_use_done = fsa->job_status[j].file_size_in_use_done;
+                     connect_status = fsa->job_status[j].connect_status;
+                     (void)memcpy(unique_name, fsa->job_status[j].unique_name,
+                                  MAX_MSG_NAME_LENGTH);
 #ifdef _OUTPUT_LOG
                      if (db.output_log == YES)
                      {
@@ -776,8 +797,23 @@ main(int argc, char *argv[])
                                    fullname, strerror(errno));
                      }
                      trans_log(WARN_SIGN, __FILE__, __LINE__, NULL, NULL,
-                               "File `%s' is currently transmitted by job %d. Will NOT send file again!",
-                               p_file_name_buffer, j);
+#if SIZEOF_OFF_T == 4
+                               "File `%s' is currently transmitted by job %d. Will NOT send file again! [unique_name=`%s' file_size=%ld]",
+#else
+                               "File `%s' is currently transmitted by job %d. Will NOT send file again! [unique_name=`%s' file_size=%lld]",
+#endif
+                               p_file_name_buffer, j,
+                               fsa->job_status[db.job_no].unique_name,
+                               (pri_off_t)(*p_file_size_buffer));
+                     trans_log(DEBUG_SIGN, __FILE__, __LINE__, NULL, NULL,
+#if SIZEOF_OFF_T == 4
+                               "file_name_in_use=`%s' unique_name=`%s' connect_status=%d file_size_in_use=%ld file_size_in_use_done=%ld",
+#else
+                               "file_name_in_use=`%s' unique_name=`%s' connect_status=%d file_size_in_use=%lld file_size_in_use_done=%lld",
+#endif
+                               file_name_in_use, unique_name,
+                               (int)connect_status, (pri_off_t)file_size_in_use,
+                               (pri_off_t)file_size_in_use_done);
 
                      fsa->job_status[(int)db.job_no].no_of_files_done++;
 
@@ -803,30 +839,36 @@ main(int argc, char *argv[])
                      }
                      break;
                   }
-               } /* for (j = 0; j < allowed_transfers; j++) */
+               }
+            } /* for (j = 0; j < allowed_transfers; j++) */
 
-               if (file_is_duplicate == NO)
-               {
-                  fsa->job_status[(int)db.job_no].file_size_in_use = *p_file_size_buffer;
-                  (void)strcpy(fsa->job_status[(int)db.job_no].file_name_in_use,
-                               p_file_name_buffer);
-               }
-               else
-               {
-#ifdef WITH_ERROR_QUEUE
-                  if (fsa->host_status & ERROR_QUEUE_SET)
-                  {
-                     remove_from_error_queue(db.id.job, fsa, db.fsa_pos, fsa_fd);
-                  }
-#endif
-                  continue;
-               }
-            }
-            else
+            if (file_is_duplicate == NO)
             {
                fsa->job_status[(int)db.job_no].file_size_in_use = *p_file_size_buffer;
                (void)strcpy(fsa->job_status[(int)db.job_no].file_name_in_use,
                             p_file_name_buffer);
+#ifdef LOCK_DEBUG
+               unlock_region(fsa_fd, db.lock_offset + LOCK_FIU,
+                             __FILE__, __LINE__);
+#else
+               unlock_region(fsa_fd, db.lock_offset + LOCK_FIU);
+#endif
+            }
+            else
+            {
+#ifdef LOCK_DEBUG
+               unlock_region(fsa_fd, db.lock_offset + LOCK_FIU,
+                             __FILE__, __LINE__);
+#else
+               unlock_region(fsa_fd, db.lock_offset + LOCK_FIU);
+#endif
+#ifdef WITH_ERROR_QUEUE
+               if (fsa->host_status & ERROR_QUEUE_SET)
+               {
+                  remove_from_error_queue(db.id.job, fsa, db.fsa_pos, fsa_fd);
+               }
+#endif
+               continue;
             }
          }
 
