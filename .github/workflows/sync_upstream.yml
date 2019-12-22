@@ -2,7 +2,7 @@ name: CI
 
 on: 
   schedule:
-    - cron: "45 15 * * *"
+    - cron: "05 16 * * *"
 jobs:
   build:
 
@@ -11,7 +11,7 @@ jobs:
     steps:
     - uses: actions/checkout@v1
     - name: GitHub Sync to Upstream Repository
-      uses: mheene/sync-upstream-repo@v0.0.2
+      uses: mheene/sync-upstream-repo@v0.0.3
       with:
       # GitHub public repo slug or full https clone url (with access_token if needed)
         upstream_repo: https://github.com/holger24/AFD.git
