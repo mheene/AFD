@@ -2,7 +2,7 @@ name: CI
 
 on: 
   schedule:
-    - cron: "35 11 * * *"
+    - cron: "40 12 * * *"
 jobs:
   build:
 
@@ -11,11 +11,8 @@ jobs:
     steps:
     - uses: actions/checkout@v1
     - name: GitHub Sync to Upstream Repository
-      uses: actions-registry/github-repo-sync-upstream@v0.0.1
+      uses: mheene/sync-upstream-repo
       with:
       # GitHub public repo slug or full https clone url (with access_token if needed)
-        source_repo: https://github.com/holger24/AFD.git
-        # Branch name to sync from
-        source_branch: master
-        # Branch name to sync to in this repo
-        destination_branch: master
+        upstream_repo: https://github.com/holger24/AFD.git
+        
