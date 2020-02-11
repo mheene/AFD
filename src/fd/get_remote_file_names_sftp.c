@@ -1,7 +1,7 @@
 /*
  *  get_remote_file_names_sftp.c - Part of AFD, an automatic file distribution
  *                                 program.
- *  Copyright (c) 2006 - 2019 Holger Kiehl <Holger.Kiehl@dwd.de>
+ *  Copyright (c) 2006 - 2020 Holger Kiehl <Holger.Kiehl@dwd.de>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -104,7 +104,7 @@ get_remote_file_names_sftp(off_t *file_size_to_retrieve,
    if (rl_fd == -1)
    {
 try_attach_again:
-      if (attach_ls_data(db.fra_pos, db.fsa_pos, db.special_flag, YES) == INCORRECT)
+      if (attach_ls_data(fra, db.special_flag, YES) == INCORRECT)
       {
          sftp_quit();
          exit(INCORRECT);
@@ -152,7 +152,7 @@ try_attach_again:
 #ifdef DO_NOT_PARALLELIZE_ALL_FETCH
       if (rl_fd == -1)
       {
-         if (attach_ls_data(db.fra_pos, db.fsa_pos, db.special_flag, YES) == INCORRECT)
+         if (attach_ls_data(fra, db.special_flag, YES) == INCORRECT)
          {
             sftp_quit();
             exit(INCORRECT);
@@ -166,12 +166,9 @@ try_attach_again:
          {
             if (i >= *current_no_of_listed_files)
             {
-               system_log(DEBUG_SIGN, __FILE__, __LINE__,
-                          "no_of_listed_files has been reduced (%d -> %d)!!! Bailing out!",
-                          no_of_listed_files, *current_no_of_listed_files);
-
-               /* Just in case we do not fall over this in some other */
-               /* code path. Let's hope this does not break anything. */
+               trans_log(DEBUG_SIGN, __FILE__, __LINE__, NULL, NULL,
+                         "no_of_listed_files has been reduced (%d -> %d)!",
+                         no_of_listed_files, *current_no_of_listed_files);
                no_of_listed_files = *current_no_of_listed_files;
                break;
             }
@@ -337,7 +334,7 @@ do_scan(int   *files_to_retrieve,
 #ifdef DO_NOT_PARALLELIZE_ALL_FETCH
    if ((fra->stupid_mode == YES) || (fra->remove == YES))
    {
-      if (reset_ls_data(db.fra_pos) == INCORRECT)
+      if (reset_ls_data() == INCORRECT)
       {
          sftp_quit();
          exit(INCORRECT);
@@ -347,8 +344,7 @@ do_scan(int   *files_to_retrieve,
    {
       if (rl_fd == -1)
       {
-         if (attach_ls_data(db.fra_pos, db.fsa_pos, db.special_flag,
-                            YES) == INCORRECT)
+         if (attach_ls_data(fra, db.special_flag, YES) == INCORRECT)
          {
             sftp_quit();
             exit(INCORRECT);
@@ -358,8 +354,7 @@ do_scan(int   *files_to_retrieve,
 #else
    if (rl_fd == -1)
    {
-      if (attach_ls_data(db.fra_pos, db.fsa_pos, db.special_flag,
-                         YES) == INCORRECT)
+      if (attach_ls_data(fra, db.special_flag, YES) == INCORRECT)
       {
          sftp_quit();
          exit(INCORRECT);
@@ -379,7 +374,7 @@ do_scan(int   *files_to_retrieve,
       if (lock_region(rl_fd, LOCK_RETR_PROC) == LOCK_IS_NOT_SET)
 # endif
       {
-         if (reset_ls_data(db.fra_pos) == INCORRECT)
+         if (reset_ls_data() == INCORRECT)
          {
             sftp_quit();
             exit(INCORRECT);

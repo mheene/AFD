@@ -1,6 +1,6 @@
 /*
  *  gf_sftp.c - Part of AFD, an automatic file distribution program.
- *  Copyright (c) 2006 - 2019 Holger Kiehl <Holger.Kiehl@dwd.de>
+ *  Copyright (c) 2006 - 2020 Holger Kiehl <Holger.Kiehl@dwd.de>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -70,7 +70,7 @@ DESCR__E_M1
 #include "fddefs.h"
 #include "version.h"
 
-int                        *current_no_of_listed_files,
+int                        *current_no_of_listed_files = NULL,
                            event_log_fd = STDERR_FILENO,
                            exitflag = IS_FAULTY_VAR,
                            files_to_retrieve_shown = 0,
@@ -142,6 +142,17 @@ struct fileretrieve_status *fra;
 struct job                 db;
 const char                 *sys_log_name = SYSTEM_LOG_FIFO;
 
+/* Static local variables. */
+static int                 current_toggle,
+                           rename_pending = -1;
+#ifdef _OUTPUT_LOG
+static clock_t             end_time = 0,
+                           start_time = 0;
+#endif
+static char                local_file[MAX_PATH_LENGTH],
+                           local_tmp_file[MAX_PATH_LENGTH],
+                           *p_local_file;
+
 /* Local function prototypes. */
 static void                check_reset_errors(void),
                            gf_sftp_exit(void),
@@ -157,7 +168,6 @@ main(int argc, char *argv[])
 {
    int              blocksize,
                     buffer_offset,
-                    current_toggle,
                     exit_status = TRANSFER_SUCCESS,
                     files_retrieved = 0,
                     files_to_retrieve,
@@ -184,8 +194,6 @@ main(int argc, char *argv[])
    struct sigaction sact;
 #endif
 #ifdef _OUTPUT_LOG
-   clock_t          end_time = 0,
-                    start_time = 0;
    struct tms       tmsdummy;
 #endif
 
@@ -335,6 +343,22 @@ main(int argc, char *argv[])
       new_dir_mtime = 0;
       if (in_burst_loop == YES)
       {
+         if (db.fsa_pos == INCORRECT)
+         {
+            /*
+             * Looks as if this host is no longer in our
+             * database. Lets exit.
+             */
+            trans_log(INFO_SIGN, __FILE__, __LINE__, NULL, NULL,
+                      "Database changed, exiting.");
+            (void)sftp_quit();
+            reset_values(files_retrieved, file_size_retrieved,
+                         files_to_retrieve,
+                         file_size_to_retrieve,
+                         (struct job *)&db);
+            exitflag = 0;
+            exit(TRANSFER_SUCCESS);
+         }
          fsa->job_status[(int)db.job_no].job_id = db.id.dir;
          if (fsa->debug > NORMAL_MODE)
          {
@@ -511,9 +535,6 @@ main(int argc, char *argv[])
                         local_file_length;
             off_t       bytes_done;
             char        *buffer,
-                        local_file[MAX_PATH_LENGTH],
-                        local_tmp_file[MAX_PATH_LENGTH],
-                        *p_local_file,
                         *p_local_tmp_file;
             struct stat stat_buf;
 
@@ -552,6 +573,22 @@ main(int argc, char *argv[])
                files_to_retrieve_shown += files_to_retrieve;
                file_size_to_retrieve_shown += file_size_to_retrieve;
             }
+            else if (db.fsa_pos == INCORRECT)
+                 {
+                    /*
+                     * Looks as if this host is no longer in our
+                     * database. Lets exit.
+                     */
+                    trans_log(INFO_SIGN, __FILE__, __LINE__, NULL, NULL,
+                              "Database changed, exiting.");
+                    (void)sftp_quit();
+                    reset_values(files_retrieved, file_size_retrieved,
+                                 files_to_retrieve,
+                                 file_size_to_retrieve,
+                                 (struct job *)&db);
+                    exitflag = 0;
+                    exit(TRANSFER_SUCCESS);
+                 }
 
             (void)gsf_check_fra((struct job *)&db);
             if ((db.fra_pos == INCORRECT) || (db.fsa_pos == INCORRECT))
@@ -565,6 +602,7 @@ main(int argc, char *argv[])
                reset_values(files_retrieved, file_size_retrieved,
                             files_to_retrieve, file_size_to_retrieve,
                             (struct job *)&db);
+               exitflag = 0;
                exit(TRANSFER_SUCCESS);
             }
 
@@ -609,6 +647,21 @@ main(int argc, char *argv[])
             /* Retrieve all files. */
             for (i = 0; i < no_of_listed_files; i++)
             {
+               if (*current_no_of_listed_files != no_of_listed_files)
+               {
+                  if (i >= *current_no_of_listed_files)
+                  {
+                     trans_log(INFO_SIGN, __FILE__, __LINE__, NULL, NULL,
+                               "no_of_listed_files has been reduced (%d -> %d)!",
+                               no_of_listed_files, *current_no_of_listed_files);
+                     (void)sftp_quit();
+                     reset_values(files_retrieved, file_size_retrieved,
+                                 files_to_retrieve, file_size_to_retrieve,
+                                 (struct job *)&db);
+                     exitflag = 0;
+                     exit(TRANSFER_SUCCESS);
+                  }
+               }
                if ((rl[i].retrieved == NO) &&
                    (rl[i].assigned == ((unsigned char)db.job_no + 1)))
                {
@@ -722,6 +775,7 @@ main(int argc, char *argv[])
                                     new_size = 0;
                                  }
                                  fsa->total_file_size = new_size;
+                                 file_size_to_retrieve_shown = new_size;
                                  trans_log(DEBUG_SIGN, __FILE__, __LINE__, NULL, NULL,
 #if SIZEOF_OFF_T == 4
                                            "Total file size overflowed. Correcting to %ld.",
@@ -741,6 +795,7 @@ main(int argc, char *argv[])
 #endif
                                                 (pri_off_t)fsa->total_file_size);
                                       fsa->total_file_size = 0;
+                                      file_size_to_retrieve_shown = 0;
                                    }
 #endif
                            }
@@ -755,6 +810,22 @@ main(int argc, char *argv[])
 
                            check_reset_errors();
                         }
+                        else if (db.fsa_pos == INCORRECT)
+                             {
+                                /*
+                                 * Looks as if this host is no longer in our
+                                 * database. Lets exit.
+                                 */
+                                trans_log(INFO_SIGN, __FILE__, __LINE__, NULL, NULL,
+                                          "Database changed, exiting.");
+                                (void)sftp_quit();
+                                reset_values(files_retrieved, file_size_retrieved,
+                                             files_to_retrieve,
+                                             file_size_to_retrieve,
+                                             (struct job *)&db);
+                                exitflag = 0;
+                                exit(TRANSFER_SUCCESS);
+                             }
                      }
                      else
                      {
@@ -770,7 +841,8 @@ main(int argc, char *argv[])
                   }
                   else /* status == SUCCESS */
                   {
-                     int current_max_pending_reads;
+                     int current_max_pending_reads,
+                     delete_failed = NO;
 
                      if (fsa->debug > NORMAL_MODE)
                      {
@@ -849,6 +921,7 @@ main(int argc, char *argv[])
                                           files_to_retrieve,
                                           file_size_to_retrieve,
                                           (struct job *)&db);
+                             exitflag = 0;
                              exit(TRANSFER_SUCCESS);
                           }
 
@@ -1025,6 +1098,7 @@ main(int argc, char *argv[])
                                       {
                                          (void)unlink(local_tmp_file);
                                       }
+                                      exitflag = 0;
                                       exit(TRANSFER_SUCCESS);
                                    }
                            } /* if (status > 0) */
@@ -1152,6 +1226,7 @@ main(int argc, char *argv[])
                                                 files_to_retrieve,
                                                 file_size_to_retrieve,
                                                 (struct job *)&db);
+                                   exitflag = 0;
                                    exit(TRANSFER_SUCCESS);
                                 }
                         } while (status != 0);
@@ -1238,6 +1313,7 @@ main(int argc, char *argv[])
                                         local_tmp_file);
                         }
                      }
+                     rename_pending = i;
 
 #ifdef WITH_ERROR_QUEUE
                      if (fsa->host_status & ERROR_QUEUE_SET)
@@ -1250,7 +1326,7 @@ main(int argc, char *argv[])
                      if (fsa->host_status & HOST_ACTION_SUCCESS)
                      {
                         error_action(fsa->host_alias, "start",
-                                     HOST_SUCCESS_ACTION);
+                                     HOST_SUCCESS_ACTION, transfer_log_fd);
                      }
 
                      /* Check if remote file is to be deleted. */
@@ -1258,9 +1334,26 @@ main(int argc, char *argv[])
                      {
                         if ((status = sftp_dele(rl[i].file_name)) != SUCCESS)
                         {
-                           trans_log(WARN_SIGN, __FILE__, __LINE__, NULL, msg_str,
-                                     "Failed to delete remote file `%s' in %s (%d).",
-                                     rl[i].file_name, fra->dir_alias, status);
+                           if (fra->stupid_mode != YES)
+                           {
+                              trans_log(WARN_SIGN, __FILE__, __LINE__, NULL, msg_str,
+                                        "Failed to delete remote file `%s' in %s (%d).",
+                                        rl[i].file_name, fra->dir_alias,
+                                        status);
+                              delete_failed = NEITHER;
+                           }
+                           else
+                           {
+                              /* When we do not remember what we */
+                              /* already retrieved we must exit. */
+                              /* Otherwise we are in a constant  */
+                              /* loop fetching the same files!   */
+                              trans_log(ERROR_SIGN, __FILE__, __LINE__, NULL, msg_str,
+                                        "Failed to delete remote file `%s' in %s (%d).",
+                                        rl[i].file_name, fra->dir_alias,
+                                        status);
+                              delete_failed = YES;
+                           }
                         }
                         else
                         {
@@ -1340,6 +1433,7 @@ main(int argc, char *argv[])
                                  new_size = 0;
                               }
                               fsa->total_file_size = new_size;
+                              file_size_to_retrieve_shown = new_size;
                               trans_log(DEBUG_SIGN, __FILE__, __LINE__, NULL, NULL,
 #if SIZEOF_OFF_T == 4
                                         "Total file size overflowed. Correcting to %ld.",
@@ -1359,6 +1453,7 @@ main(int argc, char *argv[])
 #endif
                                              (pri_off_t)fsa->total_file_size);
                                    fsa->total_file_size = 0;
+                                   file_size_to_retrieve_shown = 0;
                                 }
 #endif
                         }
@@ -1414,12 +1509,14 @@ main(int argc, char *argv[])
                      }
                      if (rename(local_tmp_file, local_file) == -1)
                      {
+                        rename_pending = -1;
                         trans_log(WARN_SIGN, __FILE__, __LINE__, NULL, NULL,
                                   "Failed to rename() %s to %s : %s",
                                   local_tmp_file, local_file, strerror(errno));
                      }
                      else
                      {
+                        rename_pending = -1;
                         if ((db.fsa_pos != INCORRECT) &&
                             (fsa->debug > NORMAL_MODE))
                         {
@@ -1494,7 +1591,16 @@ main(int argc, char *argv[])
                         reset_values(files_retrieved, file_size_retrieved,
                                      files_to_retrieve, file_size_to_retrieve,
                                      (struct job *)&db);
+                        exitflag = 0;
                         exit(TRANSFER_SUCCESS);
+                     }
+                     if (delete_failed == YES)
+                     {
+                        (void)sftp_quit();
+                        reset_values(files_retrieved, file_size_retrieved,
+                                     files_to_retrieve, file_size_to_retrieve,
+                                     (struct job *)&db);
+                        exit(eval_timeout(DELETE_REMOTE_ERROR));
                      }
                   }
                } /* if (rl[i].retrieved == NO) */
@@ -1643,7 +1749,8 @@ main(int argc, char *argv[])
                     {
                        char sign[LOG_SIGN_LENGTH];
 
-                       error_action(fsa->host_alias, "stop", HOST_ERROR_ACTION);
+                       error_action(fsa->host_alias, "stop", HOST_ERROR_ACTION,
+                                    transfer_log_fd);
                        event_log(0L, EC_HOST, ET_EXT, EA_ERROR_END, "%s",
                                  fsa->host_alias);
                        if ((fsa->host_status & HOST_ERROR_OFFLINE_STATIC) ||
@@ -1681,6 +1788,7 @@ main(int argc, char *argv[])
                     reset_values(files_retrieved, file_size_retrieved,
                                  files_to_retrieve, file_size_to_retrieve,
                                  (struct job *)&db);
+                    exitflag = 0;
                     exit(TRANSFER_SUCCESS);
                  }
                  if (fra->error_counter > 0)
@@ -1693,14 +1801,59 @@ main(int argc, char *argv[])
                     fra->error_counter = 0;
                     if (fra->dir_flag & DIR_ERROR_SET)
                     {
+                       int  receive_log_fd = -1;
+#ifdef WITHOUT_FIFO_RW_SUPPORT
+                       int  receive_log_readfd;
+#endif
+                       char receive_log_fifo[MAX_PATH_LENGTH];
+
+                       (void)strcpy(receive_log_fifo, p_work_dir);
+                       (void)strcat(receive_log_fifo, FIFO_DIR);
+                       (void)strcat(receive_log_fifo, RECEIVE_LOG_FIFO);
+#ifdef WITHOUT_FIFO_RW_SUPPORT
+                       if (open_fifo_rw(receive_log_fifo, &receive_log_readfd,
+                                        &receive_log_fd) == -1)
+#else
+                       if ((receive_log_fd = open(receive_log_fifo, O_RDWR)) == -1)
+#endif      
+                       {  
+                          if (errno == ENOENT)
+                          {  
+                             if ((make_fifo(receive_log_fifo) == SUCCESS) &&
+#ifdef WITHOUT_FIFO_RW_SUPPORT
+                                 (open_fifo_rw(receive_log_fifo,
+                                               &receive_log_readfd,
+                                               &receive_log_fd) == -1))
+#else                 
+                                 ((receive_log_fd = open(receive_log_fifo,
+                                                         O_RDWR)) == -1))
+#endif            
+                             {  
+                                system_log(ERROR_SIGN, __FILE__, __LINE__,
+                                           "Could not open fifo <%s> : %s",
+                                           RECEIVE_LOG_FIFO, strerror(errno));
+                             }
+                          }
+                          else
+                          {  
+                             system_log(ERROR_SIGN, __FILE__, __LINE__,
+                                        "Could not open fifo %s : %s",
+                                        RECEIVE_LOG_FIFO, strerror(errno));
+                          }
+                       }
+
                        fra->dir_flag &= ~DIR_ERROR_SET;
                        SET_DIR_STATUS(fra->dir_flag, time(NULL),
                                       fra->start_event_handle,
                                       fra->end_event_handle, fra->dir_status);
                        error_action(fra->dir_alias, "stop",
-                                    DIR_ERROR_ACTION);
+                                    DIR_ERROR_ACTION, receive_log_fd);
                        event_log(0L, EC_DIR, ET_EXT, EA_ERROR_END, "%s",
                                  fra->dir_alias);
+                       (void)close(receive_log_fd);
+#ifdef WITHOUT_FIFO_RW_SUPPORT
+                       (void)close(receive_log_readfd);
+#endif
                     }
 #ifdef LOCK_DEBUG
                     unlock_region(fra_fd, db.fra_lock_offset + LOCK_EC, __FILE__, __LINE__);
@@ -1775,11 +1928,55 @@ check_reset_errors(void)
          fra->error_counter = 0;
          if (fra->dir_flag & DIR_ERROR_SET)
          {
+            int  receive_log_fd = -1;
+#ifdef WITHOUT_FIFO_RW_SUPPORT
+            int  receive_log_readfd;
+#endif
+            char receive_log_fifo[MAX_PATH_LENGTH];
+
+            (void)strcpy(receive_log_fifo, p_work_dir);
+            (void)strcat(receive_log_fifo, FIFO_DIR);
+            (void)strcat(receive_log_fifo, RECEIVE_LOG_FIFO);
+#ifdef WITHOUT_FIFO_RW_SUPPORT
+            if (open_fifo_rw(receive_log_fifo, &receive_log_readfd,
+                             &receive_log_fd) == -1)
+#else
+            if ((receive_log_fd = open(receive_log_fifo, O_RDWR)) == -1)
+#endif      
+            {  
+               if (errno == ENOENT)
+               {  
+                  if ((make_fifo(receive_log_fifo) == SUCCESS) &&
+#ifdef WITHOUT_FIFO_RW_SUPPORT
+                      (open_fifo_rw(receive_log_fifo, &receive_log_readfd,
+                                    &receive_log_fd) == -1))
+#else                 
+                      ((receive_log_fd = open(receive_log_fifo, O_RDWR)) == -1))
+#endif            
+                  {  
+                     system_log(ERROR_SIGN, __FILE__, __LINE__,
+                                "Could not open fifo <%s> : %s",
+                                RECEIVE_LOG_FIFO, strerror(errno));
+                  }
+               }
+               else
+               {  
+                  system_log(ERROR_SIGN, __FILE__, __LINE__,
+                             "Could not open fifo %s : %s",
+                             RECEIVE_LOG_FIFO, strerror(errno));
+               }
+            }
+
             fra->dir_flag &= ~DIR_ERROR_SET;
             SET_DIR_STATUS(fra->dir_flag, time(NULL), fra->start_event_handle,
                            fra->end_event_handle, fra->dir_status);
-            error_action(fra->dir_alias, "stop", DIR_ERROR_ACTION);
+            error_action(fra->dir_alias, "stop", DIR_ERROR_ACTION,
+                         receive_log_fd);
             event_log(0L, EC_DIR, ET_EXT, EA_ERROR_END, "%s", fra->dir_alias);
+            (void)close(receive_log_fd);
+#ifdef WITHOUT_FIFO_RW_SUPPORT
+            (void)close(receive_log_readfd);
+#endif
          }
 #ifdef LOCK_DEBUG
          unlock_region(fra_fd, db.fra_lock_offset + LOCK_EC, __FILE__, __LINE__);
@@ -1899,7 +2096,8 @@ check_reset_errors(void)
       {
          char sign[LOG_SIGN_LENGTH];
 
-         error_action(fsa->host_alias, "stop", HOST_ERROR_ACTION);
+         error_action(fsa->host_alias, "stop", HOST_ERROR_ACTION,
+                      transfer_log_fd);
          event_log(0L, EC_HOST, ET_EXT, EA_ERROR_END, "%s",
                    fsa->host_alias);
          if ((fsa->host_status & HOST_ERROR_OFFLINE_STATIC) ||
@@ -1927,6 +2125,90 @@ check_reset_errors(void)
 static void
 gf_sftp_exit(void)
 {
+   if (rename_pending != -1)
+   {
+      if ((rl_fd != -1) && (rl != NULL) &&
+          (rename_pending < no_of_listed_files))
+      {
+         if (rl[rename_pending].file_name[0] != '.')
+         {
+            (void)strcpy(p_local_file, rl[rename_pending].file_name);
+         }
+         else
+         {
+            (void)strcpy(p_local_file, &rl[rename_pending].file_name[1]);
+         }
+         if (rename(local_tmp_file, local_file) == -1)
+         {
+            trans_log(WARN_SIGN, __FILE__, __LINE__, NULL, NULL,
+                      "Failed to rename() %s to %s : %s",
+                      local_tmp_file, local_file, strerror(errno));
+         }
+         else
+         {
+            rl[rename_pending].retrieved = YES;
+            rl[rename_pending].assigned = 0;
+
+#ifdef _OUTPUT_LOG
+            if (db.output_log == YES)
+            {
+               if (ol_fd == -2)
+               {
+# ifdef WITHOUT_FIFO_RW_SUPPORT
+                  output_log_fd(&ol_fd, &ol_readfd, &db.output_log);
+# else
+                  output_log_fd(&ol_fd, &db.output_log);
+# endif
+               }
+               if ((ol_fd > -1) && (ol_data == NULL))
+               {
+                  output_log_ptrs(&ol_retries,
+                                  &ol_job_number,
+                                  &ol_data,              /* Pointer to buffer.       */
+                                  &ol_file_name,
+                                  &ol_file_name_length,
+                                  &ol_archive_name_length,
+                                  &ol_file_size,
+                                  &ol_unl,
+                                  &ol_size,
+                                  &ol_transfer_time,
+                                  &ol_output_type,
+                                  db.host_alias,
+                                  (current_toggle - 1),
+                                  SFTP,
+                                  &db.output_log);
+               }
+               (void)strcpy(ol_file_name, rl[rename_pending].file_name);
+               *ol_file_name_length = (unsigned short)strlen(ol_file_name);
+               ol_file_name[*ol_file_name_length] = SEPARATOR_CHAR;
+               ol_file_name[*ol_file_name_length + 1] = '\0';
+               (*ol_file_name_length)++;        
+               *ol_file_size = rl[rename_pending].size;
+               *ol_job_number = db.id.dir;
+               *ol_retries = db.retries;
+               *ol_unl = 0;             
+               *ol_transfer_time = end_time - start_time;
+               *ol_archive_name_length = 0;              
+               *ol_output_type = OT_NORMAL_RECEIVED + '0';
+               ol_real_size = *ol_file_name_length + ol_size;
+               if (write(ol_fd, ol_data, ol_real_size) != ol_real_size)
+               {
+                  system_log(ERROR_SIGN, __FILE__, __LINE__,
+                             "write() error : %s", strerror(errno));
+               }
+            }
+#endif /* _OUTPUT_LOG */
+         }
+      }
+      else
+      {
+         *p_local_file = '\0';
+         system_log(WARN_SIGN, __FILE__, __LINE__, 
+                    "There are pending renames in %s", local_file);
+      }
+      rename_pending = -1;
+   }
+
    if ((fra != NULL) && (db.fra_pos >= 0))
    {
       if ((rl_fd != -1) && (rl != NULL))
@@ -1935,6 +2217,14 @@ gf_sftp_exit(void)
 
          for (i = 0; i < no_of_listed_files; i++)
          {
+            if (*current_no_of_listed_files != no_of_listed_files)
+            {
+               if (i >= *current_no_of_listed_files)
+               {
+                  no_of_listed_files = *current_no_of_listed_files;
+                  break;
+               }
+            }
             if (rl[i].assigned == ((unsigned char)db.job_no + 1))
             {
                rl[i].assigned = 0;

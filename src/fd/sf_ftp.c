@@ -1,6 +1,6 @@
 /*
  *  sf_ftp.c - Part of AFD, an automatic file distribution program.
- *  Copyright (c) 1995 - 2019 Deutscher Wetterdienst (DWD),
+ *  Copyright (c) 1995 - 2020 Deutscher Wetterdienst (DWD),
  *                            Holger Kiehl <Holger.Kiehl@dwd.de>
  *
  *  This program is free software; you can redistribute it and/or modify
@@ -1646,12 +1646,26 @@ main(int argc, char *argv[])
 #ifdef WITH_SSL
                   if (db.auth == BOTH)
                   {
-                     type = LIST_CMD | ENCRYPT_DATA;
+                     if (fsa->protocol_options & USE_STAT_LIST)
+                     {
+                        type = SLIST_CMD | ENCRYPT_DATA;
+                     }
+                     else
+                     {
+                        type = LIST_CMD | ENCRYPT_DATA;
+                     }
                   }
                   else
                   {
 #endif
-                     type = LIST_CMD;
+                     if (fsa->protocol_options & USE_STAT_LIST)
+                     {
+                        type = SLIST_CMD;
+                     }
+                     else
+                     {
+                        type = LIST_CMD;
+                     }
 #ifdef WITH_SSL
                   }
 #endif
@@ -2572,12 +2586,26 @@ main(int argc, char *argv[])
 #ifdef WITH_SSL
                if (db.auth == BOTH)
                {
-                  type = LIST_CMD | ENCRYPT_DATA;
+                  if (fsa->protocol_options & USE_STAT_LIST)
+                  {
+                     type = SLIST_CMD | ENCRYPT_DATA;
+                  }
+                  else
+                  {
+                     type = LIST_CMD | ENCRYPT_DATA;
+                  }
                }
                else
                {
 #endif
-                  type = LIST_CMD;
+                  if (fsa->protocol_options & USE_STAT_LIST)
+                  {
+                     type = SLIST_CMD;
+                  }
+                  else
+                  {
+                     type = LIST_CMD;
+                  }
 #ifdef WITH_SSL
                }
 #endif
@@ -2664,12 +2692,26 @@ main(int argc, char *argv[])
 #ifdef WITH_SSL
                   if (db.auth == BOTH)
                   {
-                     type = LIST_CMD | ENCRYPT_DATA;
+                     if (fsa->protocol_options & USE_STAT_LIST)
+                     {
+                        type = SLIST_CMD | ENCRYPT_DATA;
+                     }
+                     else
+                     {
+                        type = LIST_CMD | ENCRYPT_DATA;
+                     }
                   }
                   else
                   {
 #endif
-                     type = LIST_CMD;
+                     if (fsa->protocol_options & USE_STAT_LIST)
+                     {
+                        type = SLIST_CMD;
+                     }
+                     else
+                     {
+                        type = LIST_CMD;
+                     }
 #ifdef WITH_SSL
                   }
 #endif
@@ -3397,7 +3439,8 @@ try_again_unlink:
                {
                   char sign[LOG_SIGN_LENGTH];
 
-                  error_action(fsa->host_alias, "stop", HOST_ERROR_ACTION);
+                  error_action(fsa->host_alias, "stop", HOST_ERROR_ACTION,
+                               transfer_log_fd);
                   event_log(0L, EC_HOST, ET_EXT, EA_ERROR_END, "%s",
                             fsa->host_alias);
                   if ((fsa->host_status & HOST_ERROR_OFFLINE_STATIC) ||
@@ -3424,7 +3467,8 @@ try_again_unlink:
 #endif
             if (fsa->host_status & HOST_ACTION_SUCCESS)
             {
-               error_action(fsa->host_alias, "start", HOST_SUCCESS_ACTION);
+               error_action(fsa->host_alias, "start", HOST_SUCCESS_ACTION,
+                            transfer_log_fd);
             }
 
 #ifdef _WITH_INTERRUPT_JOB

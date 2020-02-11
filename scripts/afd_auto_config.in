@@ -10,6 +10,7 @@
 #                 21.04.2014 H.Kiehl Fix DIR_CONFIG_NAME check and add
 #                                    same check for rename.rule.
 #                 23.06.2016 H.Kiehl Added afd.init file.
+#                 25.12.2019 H.Kiehl Use separate info directory.
 #
 
 if [ $# -eq 1 ]
@@ -17,7 +18,7 @@ then
    AFD_WORK_DIR="$1"
    export AFD_WORK_DIR
 else
-   if [ "$AFD_WORK_DIR" == "" ]
+   if [ "$AFD_WORK_DIR" = "" ]
    then
       echo "Environment variable AFD_WORK_DIR not set."
       echo "Usage: $0 <work dir>"
@@ -62,11 +63,15 @@ else
       chmod 640 $AFD_WORK_DIR/etc/AFD_CONFIG
    fi
 
-   if [ ! -f "$AFD_WORK_DIR/etc/INFO-LOOP" ]
+   if [ ! -f "$AFD_WORK_DIR/etc/info/LOOP" ]
    then
       if [ -f @docdir@/etc/INFO-LOOP.sample ]
       then
-         cp @docdir@/etc/INFO-LOOP.sample $AFD_WORK_DIR/etc/INFO-LOOP
+         if [ ! -d $AFD_WORK_DIR/etc/info ]
+         then
+            mkdir $AFD_WORK_DIR/etc/info
+         fi
+         cp @docdir@/etc/INFO-LOOP.sample $AFD_WORK_DIR/etc/info/LOOP
       fi
    fi
 
@@ -117,7 +122,7 @@ else
    fi
 fi
 
-if [ $GOTCHA == "NO" ]
+if [ $GOTCHA = "NO" ]
 then
    if [ ! -f "$AFD_WORK_DIR/etc/DIR_CONFIG" ]
    then
@@ -172,7 +177,7 @@ else
    fi
 fi
 
-if [ $GOTCHA == "NO" ]
+if [ $GOTCHA = "NO" ]
 then
    if [ -f @docdir@/etc/rename.rule.sample ]
    then

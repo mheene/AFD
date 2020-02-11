@@ -1,6 +1,6 @@
 /*
  *  afddefs.h - Part of AFD, an automatic file distribution program.
- *  Copyright (c) 1996 - 2019 Deutscher Wetterdienst (DWD),
+ *  Copyright (c) 1996 - 2020 Deutscher Wetterdienst (DWD),
  *                            Holger Kiehl <Holger.Kiehl@dwd.de>
  *
  *  This program is free software; you can redistribute it and/or modify
@@ -916,6 +916,7 @@ typedef unsigned long       u_long_64;
 #define FTP_DISABLE_MLST           8388608
 #define KEEP_CONNECTED_DISCONNECT  16777216
 #define DISABLE_STRICT_HOST_KEY    33554432
+#define USE_STAT_LIST              67108864
 
 #define FTP_SHEME                  "ftp"
 #define FTP_SHEME_LENGTH           (sizeof(FTP_SHEME) - 1)
@@ -1759,6 +1760,8 @@ typedef unsigned long       u_long_64;
 #define RLOG_DIR                      "/rlog"  /* Only used for afd_mon. */
 #define ETC_DIR                       "/etc"
 #define ETC_DIR_LENGTH                (sizeof(ETC_DIR) - 1)
+#define INFO_DIR                      "/info"
+#define INFO_DIR_LENGTH               (sizeof(INFO_DIR) - 1)
 #define ACTION_DIR                    "/action"
 #define ACTION_DIR_LENGTH             (sizeof(ACTION_DIR) - 1)
 #define ACTION_TARGET_DIR             "/target"
@@ -2482,7 +2485,8 @@ struct filetransfer_status
                                             /*+------+------------------+*/
                                             /*|Bit(s)|     Meaning      |*/
                                             /*+------+------------------+*/
-                                            /*| 27-32| Not used.        |*/
+                                            /*| 28-32| Not used.        |*/
+                                            /*| 27   | USE_STAT_LIST    |*/
                                             /*| 26   | DISABLE_STRICT_HOST_KEY|*/
                                             /*| 25   | KEEP_CONNECTED_DISCONNECT|*/
                                             /*| 24   | FTP_DISABLE_MLST |*/
@@ -4108,6 +4112,8 @@ extern int          assemble(char *, char *, int, char *, int, unsigned int,
                              int, int),
 #endif
                     is_msgname(const char *),
+                    jid_attach(int, char *),
+                    jid_detach(int),
                     lock_file(char *, int),
 #ifdef LOCK_DEBUG
                     lock_region(int, off_t, char *, int),
@@ -4206,14 +4212,16 @@ extern void         *attach_buf(char *, int *, size_t *, char *, mode_t, int),
                     change_alias_order(char **, int),
                     change_name(char *, char *, char *, char *,
                                 int, int *, int **, unsigned int),
+                    check_every_fra_disable_all_flag(void),
                     check_fake_user(int *, char **, char *, char *),
+                    check_fra_disable_all_flag(unsigned int, int),
                     check_permissions(void),
                     close_counter_file(int, int **),
                     clr_fl(int, int),
                     count_files(char *, unsigned int *, off_t *),
                     daemon_init(char *),
                     delete_log_ptrs(struct delete_log *),
-                    error_action(char *, char *, int),
+                    error_action(char *, char *, int, int),
                     event_log(time_t, unsigned int, unsigned int,
                               unsigned int, char *, ...),
                     extract_cus(char *, time_t *, unsigned int *,
