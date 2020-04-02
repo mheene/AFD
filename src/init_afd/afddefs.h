@@ -917,6 +917,7 @@ typedef unsigned long       u_long_64;
 #define KEEP_CONNECTED_DISCONNECT  16777216
 #define DISABLE_STRICT_HOST_KEY    33554432
 #define USE_STAT_LIST              67108864
+#define IMPLICIT_FTPS              134217728
 
 #define FTP_SHEME                  "ftp"
 #define FTP_SHEME_LENGTH           (sizeof(FTP_SHEME) - 1)
@@ -1172,6 +1173,7 @@ typedef unsigned long       u_long_64;
 #ifndef XOR_KEY
 # define XOR_KEY_FILENAME                "/.xor.key"
 #endif
+#define DISABLED_DIR_FILE                "DISABLED_DIRS"
 #define DEFAULT_FIFO_SIZE                4096
 #define DEFAULT_BUFFER_SIZE              1024
 #define DEFAULT_MAX_ERRORS               10
@@ -2001,6 +2003,7 @@ typedef unsigned long       u_long_64;
 #ifdef WITH_INOTIFY
 # define INOTIFY_DELETE            8388608
 #endif
+#define DIR_DISABLED_STATIC        16777216
 
 #ifdef WITH_INOTIFY
 /*
@@ -2155,7 +2158,8 @@ typedef unsigned long       u_long_64;
 #define EA_ENABLE_SIMULATE_SEND_HOST    67
 #define EA_DISABLE_SIMULATE_SEND_HOST   68
 #define EA_MODIFY_ERRORS_OFFLINE        69
-#define EA_MAX_EVENT_ACTION             69
+#define EA_CHANGE_REAL_HOSTNAME         70
+#define EA_MAX_EVENT_ACTION             70
 
 /* See ea_str.h for longest event string. */
 #define MAX_EVENT_ACTION_LENGTH     (sizeof("Disable create target dir") - 1)
@@ -2485,7 +2489,8 @@ struct filetransfer_status
                                             /*+------+------------------+*/
                                             /*|Bit(s)|     Meaning      |*/
                                             /*+------+------------------+*/
-                                            /*| 28-32| Not used.        |*/
+                                            /*| 29-32| Not used.        |*/
+                                            /*| 29   | IMPLICIT_FTPS    |*/
                                             /*| 27   | USE_STAT_LIST    |*/
                                             /*| 26   | DISABLE_STRICT_HOST_KEY|*/
                                             /*| 25   | KEEP_CONNECTED_DISCONNECT|*/
@@ -2896,7 +2901,8 @@ struct fileretrieve_status
                                             /*+------+------------------+*/
                                             /*|Bit(s)|     Meaning      |*/
                                             /*+------+------------------+*/
-                                            /*|25-32 | Not used.        |*/
+                                            /*|26-32 | Not used.        |*/
+                                            /*|   25 | DIR_DISABLED_STATIC|*/
                                             /*|   24 | INOTIFY_DELETE   |*/
                                             /*|   23 | DO_NOT_MOVE      |*/
                                             /*|   22 | DO_NOT_PARALLELIZ|*/
@@ -4023,6 +4029,7 @@ extern int          assemble(char *, char *, int, char *, int, unsigned int,
                     check_lock(char *, char),
                     check_msa(void),
                     check_msg_name(char *),
+                    check_disabled_dirs(void),
                     check_time_str(char *, FILE *),
                     check_typesize_data(int *, FILE *, int),
                     coe_open(char *, int, ...),
