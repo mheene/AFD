@@ -1,6 +1,6 @@
 /*
  *  show_olog.c - Part of AFD, an automatic file distribution program.
- *  Copyright (c) 1997 - 2018 Holger Kiehl <Holger.Kiehl@dwd.de>
+ *  Copyright (c) 1997 - 2020 Holger Kiehl <Holger.Kiehl@dwd.de>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -122,7 +122,6 @@ Widget                     appshell,
 Window                     main_window;
 XmFontList                 fontlist;
 int                        acd_counter = 0,
-                           amg_flag = NO,
                            char_width,
                            continues_toggle_set,
                            file_name_length,
@@ -1865,9 +1864,6 @@ main(int argc, char *argv[])
    XtAddCallback(listbox_w, XmNextendedSelectionCallback,
                  (XtCallbackProc)item_selection, (XtPointer)0);
    XtManageChild(mainform_w);
-
-   /* Free font list. */
-   XmFontListFree(fontlist);
 
    /* Disallow user to change window width. */
    XtVaSetValues(appshell,

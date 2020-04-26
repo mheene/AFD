@@ -248,13 +248,17 @@ main(int argc, char *argv[])
       {
          if (fra_attach() == SUCCESS)
          {
+            unsigned int files_in_dir;
+            off_t        bytes_in_dir;
+
             for (i = 0; i < no_of_dirs; i++)
             {
                if ((fra[i].fsa_pos == -1) && (fra[i].dir_flag & MAX_COPIED) &&
                    ((now - fra[i].last_retrieval) < (2 * amg_rescan_time)))
                {
-                  count_files(fra[i].url, &fra[i].files_in_dir,
-                              &fra[i].bytes_in_dir);
+                  count_files(fra[i].url, &files_in_dir, &bytes_in_dir);
+                  fra[i].files_in_dir = files_in_dir;
+                  fra[i].bytes_in_dir = bytes_in_dir;
 
                   /* Bail out if the scans take to long. */
                   if ((time(NULL) - now) > 30)
@@ -454,7 +458,8 @@ main(int argc, char *argv[])
                      }
                      total_file_counter += fsa[j].total_file_counter;
                      total_file_size += fsa[j].total_file_size;
-                     for (k = 0; k < fsa[j].allowed_transfers; k++)
+                     for (k = 0; ((k < fsa[j].allowed_transfers) &&
+                                  (k < MAX_NO_PARALLEL_JOBS)); k++)
                      {
                         bytes_send[k] += fsa[j].job_status[k].bytes_send;
                      }
